@@ -207,9 +207,6 @@ tbody th { font-weight: 600; color: var(--ink); }
 .bar-fill.warn-fill { background: var(--orange); }
 .bar-target { position: absolute; top: -5px; bottom: -5px; width: 2px; background: var(--navy); }
 .bar-val { font-weight: 650; color: var(--ink); white-space: nowrap; }
-.spark { width: 96px; height: 28px; }
-.spark polyline { fill: none; stroke: var(--teal); stroke-width: 2; stroke-linejoin: round; }
-.spark circle { fill: var(--teal); }
 
 /* ---------- programmes ---------- */
 .tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
@@ -235,10 +232,6 @@ table.heat td.cell { text-align: center; font-weight: 700; border: 3px solid #ff
 table.heat tbody th { min-width: 220px; }
 table.heat tbody th .chip { margin-top: 4px; }
 .stage-chip { display: inline-block; padding: 3px 10px; border-radius: 999px; background: var(--navy); color: #fff; font-size: 12px; font-weight: 600; }
-.trend { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-top: 10px; }
-.trend-item { background: var(--canvas); border-radius: 12px; padding: 12px 14px; display: grid; gap: 6px; }
-.trend-name { font-weight: 650; }
-.trend-vals { font-size: 13px; color: var(--muted); }
 .stage-track { display: grid; gap: 8px; margin-top: 8px; }
 .st-row { display: grid; grid-template-columns: 150px repeat(4, 1fr); gap: 6px; align-items: center; font-size: 13px; }
 .st-school { font-weight: 600; }
@@ -374,12 +367,6 @@ label.check { display: inline-flex; align-items: center; gap: 8px; font-weight: 
 .lg { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); margin-top: 10px; }
 .lg-item { display: inline-flex; align-items: center; gap: 6px; }
 .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
-.chart .ln { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
-.chart .pt { stroke: #fff; stroke-width: 2; outline: none; }
-.chart .pt:hover, .chart .pt:focus { stroke: var(--navy); }
-.chart .key-line { stroke-width: 3; stroke-linecap: round; }
-.chart .end-lab { font: 13px var(--body); fill: var(--ink); }
-.chart .end-val { font-weight: 700; }
 .chart .fun-title { font: 600 14px var(--display); fill: var(--navy); }
 .chart .fun-stage { font: 12px var(--body); fill: var(--muted); }
 .chart .fun-link { opacity: 0.13; }
@@ -501,6 +488,39 @@ table.heat.compact th .chip { font-size: 11px; }
 @media (max-width: 520px) {
   .ci-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- outcome progress rows ---------- */
+.prog { display: grid; gap: 2px; margin-top: 2px; }
+.prog-row, .prog-axis { display: grid; grid-template-columns: 32px minmax(0, 1fr) 72px; column-gap: 12px; }
+.prog-row { grid-template-areas: "badge name val" "badge track delta"; align-items: center; row-gap: 4px; padding: 10px 10px; margin: 0 -10px; border-radius: 12px; outline: none; transition: background 0.15s; }
+.prog-row:hover, .prog-row:focus-visible { background: var(--canvas); }
+.prog-axis { grid-template-areas: ". ticks ."; }
+.prog-ticks { grid-area: ticks; position: relative; height: 16px; }
+.prog-ticks span { position: absolute; transform: translateX(-50%); font-size: 11px; color: var(--muted); }
+.prog-badge { grid-area: badge; align-self: center; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; font: 700 15px/1 var(--display); color: var(--navy); background: color-mix(in srgb, var(--c) 18%, #fff); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--c) 50%, #fff); }
+.prog-name { grid-area: name; font-weight: 600; font-size: 14px; color: var(--ink); }
+.prog-val { grid-area: val; justify-self: end; font: 600 22px/1 var(--display); color: var(--navy); }
+.prog-delta { grid-area: delta; justify-self: end; padding: 2px 9px; border-radius: 999px; font: 700 12px/1.45 var(--body); white-space: nowrap; }
+.prog-delta.up { background: var(--good-bg); color: var(--good); }
+.prog-delta.down { background: var(--bad-bg); color: var(--bad); }
+.prog-track { grid-area: track; position: relative; height: 22px; background-image: linear-gradient(to right, #e3e8ed 1px, transparent 1px); background-position: 0 0; }
+.prog-track::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 6px; transform: translateY(-50%); border-radius: 999px; background: #eef2f5; }
+.prog-range { position: absolute; top: 50%; height: 12px; border-radius: 999px; background: linear-gradient(90deg, color-mix(in srgb, var(--c) 25%, #fff), var(--c)); transform: translateY(-50%); transform-origin: left center; animation: prog-grow 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--delay) both; }
+.prog-dot { position: absolute; top: 50%; transform: translate(-50%, -50%); border-radius: 50%; }
+.prog-dot.start { width: 14px; height: 14px; background: #fff; box-shadow: inset 0 0 0 3px var(--c); }
+.prog-dot.mid { width: 6px; height: 6px; background: #fff; }
+.prog-dot.end { width: 20px; height: 20px; background: var(--c); box-shadow: 0 0 0 3px #fff, 0 2px 6px rgba(16, 24, 40, 0.25); animation: prog-pop 0.45s ease-out calc(var(--delay) + 0.7s) both; }
+.prog-target { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--navy); }
+.prog-legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.prog-legend span { display: inline-flex; align-items: center; gap: 7px; }
+.key-dot { display: inline-block; border-radius: 50%; }
+.key-dot.start { width: 12px; height: 12px; box-shadow: inset 0 0 0 3px var(--slate); }
+.key-dot.mid { width: 12px; height: 12px; background: var(--slate); box-shadow: inset 0 0 0 3px var(--slate), inset 0 0 0 6px #fff; }
+.key-dot.end { width: 14px; height: 14px; background: var(--slate); }
+.key-target { display: inline-block; height: 14px; border-left: 2px dashed var(--navy); }
+@keyframes prog-grow { from { transform: translateY(-50%) scaleX(0); } to { transform: translateY(-50%) scaleX(1); } }
+@keyframes prog-pop { from { opacity: 0; transform: translate(-50%, -50%) scale(0.4); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .prog-range, .prog-dot.end { animation: none; } }
 
 /* ---------- overlays ---------- */
 #tip { position: fixed; z-index: 70; max-width: 300px; background: var(--ink); color: #fff; font-size: 12.5px; line-height: 1.4; padding: 8px 10px; border-radius: 8px; pointer-events: none; box-shadow: 0 6px 18px rgba(16, 24, 40, 0.18); }

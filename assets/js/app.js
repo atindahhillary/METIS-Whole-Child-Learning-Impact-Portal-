@@ -488,11 +488,6 @@
         <span class="bar-val">${esc(i.text != null ? i.text : i.value)}</span>
       </div>`).join("")}</div>`;
   }
-  function spark(vals) {
-    const w = 96, h = 28, p = 4, min = Math.min(...vals) - 4, max = Math.max(...vals) + 4;
-    const pts = vals.map((v, i) => [p + i * (w - 2 * p) / (vals.length - 1), h - p - (v - min) / (max - min) * (h - 2 * p)]);
-    return `<svg class="spark" viewBox="0 0 ${w} ${h}" aria-hidden="true"><polyline points="${pts.map(q => q.join(",")).join(" ")}"/>${pts.map((q, i) => `<circle cx="${q[0]}" cy="${q[1]}" r="${i === pts.length - 1 ? 3.2 : 2.2}"/>`).join("")}</svg>`;
-  }
   const heatColor = v => { const t = Math.max(0, Math.min(1, (v - 20) / 65)); const a = [238, 248, 249], b = [95, 182, 192]; return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(",")})`; };
 
   /* ---------- small UI pieces ---------- */
@@ -507,7 +502,7 @@
   /* Label nudges for small or crowded counties: [dx, dy, anchor, leader line] */
   const MAP_LABEL = { "Nairobi": [-72, 28, "end", true], "Kiambu": [-6, -12, "middle"], "Kajiado": [0, 8, "middle"], "Kisumu": [-8, -15, "middle"], "Machakos": [30, 4, "middle"] };
   const MAP_BINS = [[1000, "1,000 or more", "#13808d"], [100, "100 to 999", "#6dbcc6"], [1, "Under 100", "#c6e6ea"]];
-  /* Colours assigned by where each line sits, so neighbouring lines always differ clearly. */
+  /* One colour per North Star outcome; validated as a set for colour-blind readers. */
   const NS_COLOR = { belonging: "#1699a8", delight: "#eb6834", expertise: "#5b6fd6", creativity: "#e0a100", agency: "#c9508a" };
 
   function latestSchoolObs() {
@@ -535,22 +530,37 @@
       <text x="${h}" y="${h}" dominant-baseline="central" text-anchor="middle" class="ring-text">${Math.round(f * 100)}%</text></svg>`;
   }
 
-  function lineChart(series, xLabels, o) {
-    const W = 470, H = 250, l = 40, r = 140, t = 14, b = 34;
-    const X = i => l + (W - l - r) * i / (xLabels.length - 1);
-    const Y = v => t + (H - t - b) * (1 - (v - o.yMin) / (o.yMax - o.yMin));
-    let g = "";
-    for (let v = o.yMin; v <= o.yMax; v += o.step) g += `<line class="grid" x1="${l}" x2="${W - r + 4}" y1="${Y(v)}" y2="${Y(v)}"/><text class="axis" x="${l - 8}" y="${Y(v) + 4}" text-anchor="end">${v}%</text>`;
-    xLabels.forEach((x, i) => { g += `<text class="axis" x="${X(i)}" y="${H - 10}" text-anchor="middle">${esc(x)}</text>`; });
-    series.forEach(s => {
-      g += `<polyline class="ln" style="stroke:${s.color}" points="${s.vals.map((v, i) => `${X(i)},${Y(v)}`).join(" ")}"/>`;
-      s.vals.forEach((v, i) => { g += `<circle class="pt" cx="${X(i)}" cy="${Y(v)}" r="5" style="fill:${s.color}" tabindex="0" data-tip="${esc(`${s.name}, ${xLabels[i]}: evident in ${Math.round(v)}% of observed lessons`)}"/>`; });
-    });
-    const last = xLabels.length - 1;
-    const ends = series.map(s => ({ s, y: Y(s.vals[last]) })).sort((a, b) => a.y - b.y);
-    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
-    ends.forEach(e => { g += `<line class="key-line" x1="${X(last) + 10}" x2="${X(last) + 22}" y1="${e.y}" y2="${e.y}" style="stroke:${e.s.color}"/><text class="end-lab" x="${X(last) + 28}" y="${e.y + 4}">${esc(e.s.name)} <tspan class="end-val">${Math.round(e.s.vals[last])}%</tspan></text>`; });
-    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)}">${g}</svg>`;
+  /* Outcome progress: one row per North Star outcome. The bar runs from the first to the latest term,
+     with a marker for each term between. The scale fits the data, so small gains are still visible. */
+  function progressRows(series, terms, o) {
+    const all = series.flatMap(sr => sr.vals).concat(Object.values(o.targets || {}));
+    const min = Math.max(0, Math.floor((Math.min(...all) - 4) / 10) * 10), max = Math.min(100, Math.ceil((Math.max(...all) + 4) / 10) * 10);
+    const X = v => (Math.max(min, Math.min(max, v)) - min) / (max - min) * 100;
+    const ticks = [];
+    for (let v = min; v <= max; v += 10) ticks.push(v);
+    const grid = `background-size:${100 / (ticks.length - 1)}% 100%`;
+    const rows = series.map((sr, i) => {
+      const a = sr.vals[0], z = sr.vals[sr.vals.length - 1], d = Math.round(z) - Math.round(a), tg = o.targets && o.targets[sr.key];
+      const tip = `${sr.name}: ${sr.vals.map((v, k) => `${terms[k]} ${Math.round(v)}%`).join(", ")}${tg ? `. Target ${tg}%` : ""}`;
+      return `<div class="prog-row" role="listitem" tabindex="0" data-tip="${esc(tip)}" style="--c:${sr.color};--delay:${i * 90}ms">
+        <span class="prog-badge">${sr.letter}</span>
+        <span class="prog-name">${esc(sr.name)}</span>
+        <span class="prog-val">${Math.round(z)}%</span>
+        <div class="prog-track" style="${grid}">
+          <span class="prog-range" style="left:${X(Math.min(a, z))}%;width:${Math.abs(X(z) - X(a))}%"></span>
+          ${tg ? `<span class="prog-target" style="left:${X(tg)}%"></span>` : ""}
+          <span class="prog-dot start" style="left:${X(a)}%"></span>
+          ${sr.vals.slice(1, -1).map(v => `<span class="prog-dot mid" style="left:${X(v)}%"></span>`).join("")}
+          <span class="prog-dot end" style="left:${X(z)}%"></span>
+        </div>
+        <span class="prog-delta ${d >= 0 ? "up" : "down"}">${d >= 0 ? "+" : ""}${d} pts</span>
+      </div>`;
+    }).join("");
+    return `<div class="prog" role="list" aria-label="${esc(o.label)}">
+      <div class="prog-axis" aria-hidden="true"><div class="prog-ticks">${ticks.map(v => `<span style="left:${X(v)}%">${v}%</span>`).join("")}</div></div>
+      ${rows}
+      <div class="prog-legend"><span><i class="key-dot start"></i>${esc(terms[0])}</span>${terms.length > 2 ? `<span><i class="key-dot mid"></i>${esc(terms.slice(1, -1).join(", "))}</span>` : ""}<span><i class="key-dot end"></i>${esc(terms[terms.length - 1])}</span>${o.targets ? `<span><i class="key-target"></i>Target</span>` : ""}</div>
+    </div>`;
   }
 
   function funnelSVG(groups) {
@@ -701,9 +711,8 @@
     /* North Star trend, matched schools only */
     const matched = ns ? ns.schools : [];
     const termsWith = C.TERMS.filter(x => northStar(x.id, matched).schools.length === matched.length && matched.length);
-    const series = C.NORTH_STAR.map(o => ({ name: o.name, color: NS_COLOR[o.key], vals: termsWith.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
-    const trend = termsWith.length > 1 ? lineChart(series, termsWith.map(x => x.label.replace(", 2026", "")), { yMin: 20, yMax: 80, step: 20, label: "North Star outcomes by term" }) +
-      `<div class="lg">${series.map(s => swatch(s.color, s.name)).join("")}</div>` + dataTable(["Outcome", ...termsWith.map(x => x.label)], series.map(sr => [sr.name, ...sr.vals.map(v => Math.round(v) + "%")])) : empty("Trends appear once two terms are verified.");
+    const series = C.NORTH_STAR.map(o => ({ key: o.key, letter: o.letter, name: o.name, color: NS_COLOR[o.key], vals: termsWith.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
+    const trend = termsWith.length > 1 ? progressRows(series, termsWith.map(x => x.label.replace(", 2026", "")), { targets: { agency: C.TARGETS.agency }, label: "How each North Star outcome moved by term" }) + dataTable(["Outcome", ...termsWith.map(x => x.label)], series.map(sr => [sr.name, ...sr.vals.map(v => Math.round(v) + "%")])) : empty("Trends appear once two terms are verified.");
 
     /* InnovatED funnel and bubble */
     const fun = m ? funnelSVG([["Metis-led", m.metis, "var(--teal)"], ["Partner-led", m.partner, "var(--orange)"]].map(([name, a, color]) => ({
@@ -950,7 +959,8 @@
     });
     const ns = northStarNow();
     const matched = ns ? ns.schools : [];
-    const trend = C.NORTH_STAR.map(o => ({ o, vals: terms.map(t => northStar(t, matched)).filter(x => x.schools.length === matched.length).map(x => x.values.find(v => v.key === o.key).value) }));
+    const matchedTerms = C.TERMS.filter(x => matched.length && northStar(x.id, matched).schools.length === matched.length);
+    const trendSeries = C.NORTH_STAR.map(o => ({ key: o.key, letter: o.letter, name: o.name, color: NS_COLOR[o.key], vals: matchedTerms.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
     const learners = sum(C.SCHOOLS, s => s.learners);
     return programTabs("schools") + head("t · Tackle", "Whole Child Schools", `Six school design teams making whole child learning part of everyday practice. ${fmt(learners)} learners.`) +
       `<div class="kpis">${kpi("Partner schools", C.SCHOOLS.length, C.STAGES.map(st => `${C.SCHOOLS.filter(x => x.stage === st).length} ${st.toLowerCase()}`).filter(x => !x.startsWith("0")).join(" · "))}
@@ -965,7 +975,7 @@
           <td><span class="stage-chip">${esc(s.stage)}</span></td></tr>`).join("")}
         </tbody></table></div></section>
       <section class="card"><h2>Change over the year</h2><p class="muted">The ${matched.length} schools with verified data in every term, so the comparison is like for like.</p>
-        <div class="trend">${trend.map(t => `<div class="trend-item"><div class="trend-name"><span class="ns-dot">${t.o.letter}</span> ${t.o.name}</div>${t.vals.length > 1 ? spark(t.vals) : ""}<div class="trend-vals">${t.vals.map(v => Math.round(v) + "%").join(" → ")}</div></div>`).join("")}</div></section>
+        ${matchedTerms.length > 1 ? progressRows(trendSeries, matchedTerms.map(x => x.label.replace(", 2026", "")), { targets: { agency: C.TARGETS.agency }, label: "How each North Star outcome moved by term" }) : empty("Change appears once two terms are verified.")}</section>
       <section class="card"><h2>How far practice has spread</h2>
         <div class="stage-track">${C.SCHOOLS.map(s => `<div class="st-row"><span class="st-school">${esc(s.label)}</span>${C.STAGES.map((st, i) => `<span class="st-step${i <= C.STAGES.indexOf(s.stage) ? " on" : ""}${st === s.stage ? " cur" : ""}">${st}</span>`).join("")}</div>`).join("")}</div></section>`;
   }
