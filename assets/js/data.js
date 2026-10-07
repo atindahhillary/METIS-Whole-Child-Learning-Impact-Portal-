@@ -49,7 +49,7 @@ window.METIS_CONFIG = (function () {
     { id: "me", label: "M&E", hint: "Check, verify or return submitted data" },
     { id: "lead", label: "Decision maker", hint: "Programs Manager and Director: act on decision prompts and record decisions" },
     { id: "teacher", label: "Teacher", hint: "Trained teachers: send a two-minute check-in about your class" },
-    { id: "donor", label: "Donor", hint: "Funders and partners: verified data only" }
+    { id: "partner", label: "Partner", hint: "Funders and partners: verified results only" }
   ];
 
   /* Dataset schemas drive the forms, CSV templates and checks. */
@@ -169,7 +169,7 @@ window.METIS_CONFIG = (function () {
     ({ fellow, org_type, county, status, attendance_pct, relevance, belonging, hours, led_full_test: led, sponsor_active: sponsor, milestones_done, learner_data: learner });
 
   const seed = {
-    version: 2,
+    version: 3,
     role: "staff",
     submissions: [
       {
@@ -330,7 +330,7 @@ window.METIS_CONFIG = (function () {
     challenge: "How might we see, in time to act, whether the children Metis reaches are thriving as whole people, and share that honestly with the people who lead and fund the work?",
     smaller: [
       "Make data entry quick for coaches and partners working in the field, on a phone, with weak connections.",
-      "Make sure every number a donor sees has been checked and carries its sample size and source.",
+      "Make sure every number a partner sees has been checked and carries its sample size and source.",
       "Keep children's voices in the picture without ever exposing a child.",
       "Turn data into decisions at the moments decisions are actually made."
     ],
@@ -338,7 +338,7 @@ window.METIS_CONFIG = (function () {
       ["Do hard things", "Measure all five North Star outcomes, including agency, belonging and delight, not only test scores."],
       ["Go further together", "One shared picture across all five programme areas; partners and coaches add data directly."],
       ["Listen and learn", "Learner, teacher and caregiver voices sit beside the numbers. Pause points are built in."],
-      ["Redefine excellence", "Nothing counts until it has been checked. Donors see verified data only."],
+      ["Redefine excellence", "Nothing counts until it has been checked. Partners see verified data only."],
       ["Do small things with great love", "Plain language, small forms, templates that work offline, and care for children's privacy."]
     ],
     people: [
@@ -350,7 +350,7 @@ window.METIS_CONFIG = (function () {
       ["Coaches, Codifier, Associates, partners", "Fast data entry that doesn't duplicate reporting", "One Add data flow with templates and checks at entry"],
       ["M&E", "Consistent definitions, quality checks, an audit trail", "Automatic checks and a verify-or-return review queue"],
       ["Programs Manager and Director", "Early warning; cost against results; decisions at the right time", "Decision prompts from agreed rules; cost per teacher using the tool"],
-      ["Donors and funders", "Honest, timely, verified results with sample sizes and stories", "A donor report built only from verified data"],
+      ["Funders and partners", "Honest, timely, verified results with sample sizes and stories", "A partner dashboard and report built only from verified data"],
       ["County education offices and MoE", "Alignment with CBE; aggregate school data", "North Star outcomes mapped to CBE competencies"]
     ],
     insights: [
@@ -362,10 +362,10 @@ window.METIS_CONFIG = (function () {
     ],
     objectives: [
       ["One picture, child at the centre", "All five programme areas in one place, organised around the learner outcomes they serve."],
-      ["Trust before display", "Every figure passes checks and carries its sample size and source before a donor sees it."],
+      ["Trust before display", "Every figure passes checks and carries its sample size and source before a partner sees it."],
       ["Data in from the field", "Short forms and CSV templates a coach or partner can fill on a phone."],
       ["Data to decisions", "Agreed rules turn data into prompts at planned pause points, with owners and dates."],
-      ["Share honestly", "A donor view that shows verified data only, with stories used only with consent."],
+      ["Share honestly", "A partner view that shows verified data only, with stories used only with consent."],
       ["Protect children", "Aggregate figures only. No names, phone numbers or learner IDs (UPI, NEMIS, admission numbers)."]
     ],
     chain: [
@@ -378,7 +378,7 @@ window.METIS_CONFIG = (function () {
       ["For learners", "Term on term, more lessons in partner schools where children show all five North Star outcomes, with the biggest gains where they start lowest."],
       ["For teachers and leaders", "Whole-child practice that is part of the school's routines, timetable and budget, not a pilot that ends with the programme."],
       ["For the system", "A Kenyan Whole Child Learning playbook built from real school journeys, shared through Knowledge Sharing Events."],
-      ["For donors and partners", "Honest, verified reporting on time, with sample sizes, sources and children's voices used with care."]
+      ["For partners and funders", "Honest, verified reporting on time, with sample sizes, sources and children's voices used with care."]
     ],
     indicators: [
       ["Leaders", "Fellows who led a full design test", "The Fellow took their sprint team through prototype, test with users and a documented change; a coach saw it at least once", "Coach observation", "Each sprint", "18 of 24"],
@@ -402,9 +402,16 @@ window.METIS_CONFIG = (function () {
       ["Safeguarding", "One consent box covered adults and learners alike, and there was no privacy notice", "Learner quotes need caregiver consent and the learner's own agreement, name phrases are blocked, and a privacy notice explains what is held"],
       ["Programme operations", "Decisions weren't tied to prompts, and nobody was reminded to look again", "Decisions link to their prompt, overdue reviews are flagged, and reviews can be marked done"],
       ["Finance", "No cost per learner", "InnovatED shows an estimated cost per learner reached"],
-      ["Donor relations", "The report showed successes only, with no data download", "The donor report adds what we're learning and a CSV of verified figures"],
+      ["Partner relations", "The report showed successes only, with no data download", "The partner report adds what we're learning and a CSV of verified figures"],
       ["Accessibility", "Some charts could only be read by hovering", "Key charts have a table view, and counties can be selected with a keyboard"],
       ["Counties and policy", "County officers couldn't see their own county", "Select a county on the map to open its profile"]
+    ],
+    review3: [
+      ["Whole child and CBE", "The North Star showed as the letters A to E, which meant little to anyone outside Metis", "Each outcome is now a row of ten children, one lit for every lesson in ten where it showed, with a sparkle on each one gained since Term 1"],
+      ["UX and digital inclusion", "Charts leaned on long explanations", "Short labels on every chart, one Metis caption underneath, and the detail kept in tooltips and data tables"],
+      ["Programme operations", "Everyone saw the same dashboard, whatever their job", "Five dashboards: leadership, programme, data trust, my classroom and partner, each showing what that person acts on"],
+      ["M&E", "New data only showed up after a reload", "Numbers count up, changed charts pulse with an Updated tag, a Just in feed lists new data, and other open tabs refresh on their own"],
+      ["Partner relations", "Funders were called donors, and their view could show delivery comparisons", "Funders are partners now, and the partner view leaves out delivery comparisons, held-back rows and decision prompts"]
     ],
     next: [
       "A shared database with sign-in, so everyone sees the same data (left for the next stage on purpose; the data model is ready for it)",
@@ -412,17 +419,17 @@ window.METIS_CONFIG = (function () {
       "Pulling assessment results straight from school records instead of entering them"
     ],
     council: [
-      ["Whole child learning and CBE", "Measure all five North Star outcomes and speak CBE's language", "North Star strip; outcomes mapped to CBE competencies"],
+      ["Whole child learning and CBE", "Measure all five North Star outcomes and speak CBE's language", "North Star shown as children; outcomes mapped to CBE competencies"],
       ["M&E and data quality", "No number without its n, source and check", "Checks at entry, review queue, verified-only figures"],
       ["Child safeguarding and data protection", "Aggregate data only; no child identifiers; consent for every quote (Kenya Data Protection Act, 2019)", "Personal-data guard on uploads; consent required for voices"],
       ["Adult learning and leadership", "Track practice, not attendance", "Fellowship view built on Guskey's five levels"],
       ["Programme operations", "Decision rules agreed in advance, with owners and dates", "Pause and adapt prompts and a decision log"],
       ["Finance and value for money", "Judge cost against results", "Cost per teacher using the tool beside cost per completer"],
-      ["Donor relations", "Funder-ready, honest, printable", "Donor report with generated sentences and a print layout"],
+      ["Partner relations", "Funder-ready, honest, printable", "Partner report with generated sentences and a print layout"],
       ["UX and digital inclusion", "Works on a phone, in plain language, on low bandwidth", "Responsive layout, CSV templates, no heavy libraries"],
       ["Systems and policy", "Useful to counties and the Ministry", "County breakdowns and CBE mapping"]
     ]
   };
 
-  return { version: 2, COUNTIES, TERMS, NORTH_STAR, PROGRAMS, SCHOOLS, STAGES, PILOT_STAGES, ROLES, DATASETS, DESIGN_MAP, TARGETS, LAST_USED, SUPPORT, GRADE_BANDS, seed };
+  return { version: 3, COUNTIES, TERMS, NORTH_STAR, PROGRAMS, SCHOOLS, STAGES, PILOT_STAGES, ROLES, DATASETS, DESIGN_MAP, TARGETS, LAST_USED, SUPPORT, GRADE_BANDS, seed };
 })();

@@ -2,7 +2,7 @@
 
 **Live:** https://atindahhillary.github.io/METIS-Whole-Child-Learning-Impact-Portal-/
 
-A concept prototype of an impact portal built around how Metis already works: the **METIS Way** (Make meaning, Empathize, Tackle, Iterate, Share) organises the navigation, and Metis's **North Star** learner outcomes (Agency, Belonging, Creativity, Delight, Expertise) sit at the centre of the dashboard.
+A concept prototype of an impact portal built around how Metis already works: the **METIS Way** (Make meaning, Empathize, Tackle, Iterate, Share) organises the navigation, and Metis's **North Star** learner outcomes (Agency, Belonging, Creativity, Delight, Expertise) sit at the centre of every dashboard, drawn as children rather than letters.
 
 > Concept prototype by Hillary Atindah. Not an official Metis platform. All figures are fictional sample data. Anything you add is saved in your own browser only.
 
@@ -10,7 +10,7 @@ A concept prototype of an impact portal built around how Metis already works: th
 
 | METIS Way | Area | What it does |
 |---|---|---|
-| | Dashboard | Stat tiles, the North Star puzzle, outcome progress bars (Term 1 to latest, with gains and targets), a registration-to-use funnel, cost-against-results bubbles, a Kenya county map, a school heatmap, Fellowship waffle and Guskey staircase, a feedback bullet chart, an event pictogram, the EdTech evidence ladder, open decisions and a learner voice |
+| | Dashboard | A different dashboard for each role (see below). The North Star appears as ten children per outcome, one lit for every lesson in ten where children clearly showed it, with a sparkle on each one gained since Term 1. Every chart carries a one-line Metis caption, and the dashboards update live as data is saved |
 | m | Design map | The design thinking map: challenge, needs, objectives, outcome chain, impact and the expert council's requirements |
 | e | Voices | Anonymous, consented quotes from learners, teachers, caregivers and Fellows, tagged by North Star outcome |
 | t | Programmes | Fellowship, InnovatED, Whole Child Schools, Kenya EdTech Testbed, Knowledge Sharing Events |
@@ -18,17 +18,26 @@ A concept prototype of an impact portal built around how Metis already works: th
 | i | Add data | Forms and CSV uploads for seven datasets, checked as rows are added |
 | i | Review and trust | M&E verifies submissions or returns them with a note, and every submission keeps a dated history. Only verified data counts |
 | i | Pause and adapt | Decision prompts from rules agreed in advance, plus a decision log that links decisions to prompts and flags overdue reviews |
-| s | Donor report | Verified-only report with ready-to-use sentences, what we're learning, sources and sample sizes; prints to PDF and downloads verified figures as CSV |
+| s | Partner report | Verified-only report with ready-to-use sentences, what we're learning, sources and sample sizes; prints to PDF and downloads verified figures as CSV |
 
 ## Roles
 
-Switch role from the top bar.
+Switch role from the top bar. Each role gets its own dashboard and only the menu items it needs.
 
-- **Program staff** (Lead Coaches, Codifier, Associates, partners): add data, see everything internal.
-- **M&E:** verify or return submissions.
-- **Decision maker** (Programs Manager, Director): record decisions against prompts and mark reviews done.
-- **Teacher:** send check-ins; sees the dashboard and programmes, not the internal review tools.
-- **Donor:** verified data only; data entry, review and decisions are hidden.
+| Role | Dashboard | What it shows |
+|---|---|---|
+| **Decision maker** (Programs Manager, Director) | Leadership view | Headline tiles, the North Star children, term-by-term progress, funnel, cost against results, map, school heatmap, Fellowship, teacher reports, decisions due and a live activity feed. Records decisions against prompts |
+| **Program staff** (Lead Coaches, Codifier, Associates) | Programme view | This week's to-do list (returned submissions, missing event data, Fellows and teachers needing support), activity, teacher reports, Fellowship, events, the evidence ladder and the map. Adds data |
+| **M&E** | Data trust view | Review queue with check results, what the checks found, held-back and flagged rows, how fresh each dataset is, and activity. Verifies or returns submissions |
+| **Teacher** | My classroom | A check-in prompt, their own check-ins from this device, what teachers are seeing as children, time saved, ideas from other teachers and the support teachers asked for. Menu: Dashboard, Voices, Teacher check-in |
+| **Partner** (funders and partners) | Partner view | Verified results only: the North Star children, progress, reach map, what teachers are seeing, events, evidence ladder, voices and the partner report. No delivery comparisons, held-back rows or decision prompts |
+
+## Live updates
+
+- Numbers count up and charts draw themselves in when a dashboard opens.
+- A card whose data changed since you last saw it pulses and shows an **Updated** tag.
+- **Just in** lists the latest submissions, reviews, decisions and voices.
+- The **Live** badge in the top bar shows when data was last saved. Open the portal in two tabs (say, a teacher check-in in one and the M&E dashboard in the other) and the second tab updates on its own when the first saves.
 
 ## Data checks
 

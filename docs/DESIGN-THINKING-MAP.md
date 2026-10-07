@@ -20,7 +20,7 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 **Smaller questions inside it**
 
 - How might we make data entry quick for coaches and partners working in the field, on a phone, with weak connections?
-- How might we make sure every number a donor sees has been checked and carries its sample size and source?
+- How might we make sure every number a partner sees has been checked and carries its sample size and source?
 - How might we keep children's voices in the picture without ever exposing a child?
 - How might we turn data into decisions at the moments decisions are actually made?
 
@@ -31,7 +31,7 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 | Do hard things | Measure all five North Star outcomes, including the hard-to-measure ones (agency, belonging, delight), not only test scores. |
 | Go further together | One shared picture across all five programme areas; partners and coaches add data directly. |
 | Listen and learn | Learner, teacher and caregiver voices sit beside the numbers. Pause points are built in. |
-| Redefine excellence | Nothing counts until it has been checked. Donors see verified data only. |
+| Redefine excellence | Nothing counts until it has been checked. Partners see verified data only. |
 | Do small things with great love | Plain language, small forms, templates that work offline, and care for children's privacy. |
 
 ---
@@ -48,7 +48,7 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 | **Lead Coaches, Codifier, Associates, partners** | Fast data entry that doesn't duplicate reporting | Different spreadsheets per programme; errors found late | One "Add data" flow with templates and checks at the moment of entry |
 | **M&E** | Consistent definitions, quality checks, an audit trail | Impossible values (130% use, more completers than registrants) reach reports | Automatic checks, a review queue, verify or return with a note |
 | **Programs Manager and Director** | Early warning; cost against results; decisions at planned moments | Cost per completer hides drop-out and non-use; problems surface in the wrong week | Decision prompts from agreed rules; cost per teacher actually using the tool |
-| **Donors and funders** | Honest, timely, verified results with sample sizes and stories | Rushed reports with gaps that aren't explained | A donor report built only from verified data, with ready-to-use sentences |
+| **Funders and partners** | Honest, timely, verified results with sample sizes and stories | Rushed reports with gaps that aren't explained | A partner dashboard and report built only from verified data, with ready-to-use sentences |
 | **County education offices and MoE** | Alignment with CBE; aggregate school data | Programmes speak their own language | North Star outcomes mapped to CBE core competencies |
 
 **Insights from the programme data**
@@ -66,10 +66,10 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 **Objectives**
 
 1. **One picture, child at the centre.** All five programme areas in one place, organised around the learner outcomes they serve.
-2. **Trust before display.** Every figure passes checks and carries its sample size (n) and source before it is shown to a donor.
+2. **Trust before display.** Every figure passes checks and carries its sample size (n) and source before it is shown to a partner.
 3. **Data in from the field.** Short forms and CSV templates that a coach or partner can fill on a phone.
 4. **Data to decisions.** Agreed rules turn data into prompts at planned pause points, with owners and dates.
-5. **Share honestly.** A donor view that shows verified data only, with stories used only with consent.
+5. **Share honestly.** A partner view that shows verified data only, with stories used only with consent.
 6. **Protect children.** Aggregate figures only. No names, phone numbers or learner IDs (UPI, NEMIS, admission numbers) ever enter the portal.
 
 **Portal features mapped to the METIS Way**
@@ -83,7 +83,7 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 | I | Add data | Forms and CSV uploads with checks at entry and a personal-data guard |
 | I | Review and trust | M&E verifies or returns each submission; only verified data counts |
 | I | Pause and adapt | Decision prompts from agreed rules, plus a decision log |
-| S | Donor report | Verified-only report with ready-to-use sentences, printable |
+| S | Partner report | Verified-only report with ready-to-use sentences, printable |
 
 ---
 
@@ -138,7 +138,7 @@ design teams             used and embedded               Creativity, Delight,   
 
 **For the system:** a Kenyan Whole Child Learning playbook built from real school journeys, shared through Knowledge Sharing Events with counties and partners.
 
-**For donors and partners:** honest, verified reporting on time, with sample sizes, sources and children's voices used with care.
+**For partners and funders:** honest, verified reporting on time, with sample sizes, sources and children's voices used with care.
 
 ---
 
@@ -154,7 +154,7 @@ Each lens set one requirement the portal had to meet.
 | Adult learning and leadership development | Track practice, not attendance | Fellowship view uses Guskey's five levels |
 | Programme operations | Decision rules agreed in advance, with owners and dates | Pause and adapt page with prompts and a decision log |
 | Finance and value for money | Judge cost against results | Cost per teacher using the tool, alongside cost per completer |
-| Donor relations | Funder-ready, honest, printable | Donor report with generated sentences and print layout |
+| Partner relations | Funder-ready, honest, printable | Partner report with generated sentences and print layout |
 | UX and digital inclusion | Works on a phone, plain language, low bandwidth | Responsive layout, CSV templates, no heavy libraries |
 | Systems and policy | Useful to counties and MoE | County breakdowns; CBE mapping |
 
@@ -202,7 +202,7 @@ After the first version went live, each lens reviewed it again. Every gap below 
 | Safeguarding | One consent box covered adults and learners alike, and there was no privacy notice | Learner quotes need caregiver consent and the learner's own agreement, name phrases are blocked, and a privacy notice explains what is held |
 | Programme operations | Decisions weren't tied to prompts, and nobody was reminded to look again | Decisions link to their prompt, overdue reviews are flagged, and reviews can be marked done |
 | Finance | No cost per learner | InnovatED shows an estimated cost per learner reached |
-| Donor relations | The report showed successes only, with no data download | The donor report adds what we're learning and a CSV of verified figures |
+| Partner relations | The report showed successes only, with no data download | The partner report adds what we're learning and a CSV of verified figures |
 | Accessibility | Some charts could only be read by hovering | Key charts have a table view, and counties can be selected with a keyboard |
 | Counties and policy | County officers couldn't see their own county | Select a county on the map to open its profile |
 
@@ -213,3 +213,15 @@ After the first version went live, each lens reviewed it again. Every gap below 
 - Pulling assessment results straight from school records instead of entering them
 
 Sources: The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation.
+
+## Expert review, round three: one portal, five experiences
+
+The third review asked a simpler question: does each person see what they need, at a glance, the moment data arrives?
+
+| Lens | What we saw | What changed |
+|---|---|---|
+| Whole child and CBE | The North Star showed as the letters A to E, which meant little to anyone outside Metis | Each outcome is now a row of ten children, one lit for every lesson in ten where it showed, with a sparkle on each one gained since Term 1 |
+| UX and digital inclusion | Charts leaned on long explanations | Short labels on every chart, one Metis caption underneath, and the detail kept in tooltips and data tables |
+| Programme operations | Everyone saw the same dashboard, whatever their job | Five dashboards: leadership, programme, data trust, my classroom and partner, each showing what that person acts on |
+| M&E | New data only showed up after a reload | Numbers count up, changed charts pulse with an Updated tag, a Just in feed lists new data, and other open tabs refresh on their own |
+| Partner relations | Funders were called donors, and their view could show delivery comparisons | Funders are partners now, and the partner view leaves out delivery comparisons, held-back rows and decision prompts |

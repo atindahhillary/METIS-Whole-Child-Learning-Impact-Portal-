@@ -10,12 +10,26 @@
   function load() {
     try {
       const raw = localStorage.getItem(STORE);
-      if (raw) { const p = JSON.parse(raw); if (p && p.version === C.version && Array.isArray(p.submissions)) return p; }
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p && (p.version === C.version || p.version === 2) && Array.isArray(p.submissions)) {
+          if (p.role === "donor") p.role = "partner";
+          p.version = C.version;
+          return p;
+        }
+      }
     } catch (e) { /* storage unavailable: fall back to sample data */ }
     return null;
   }
   let state = load() || fresh();
-  function save() { try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { /* ignore */ } }
+  function sigOf(s) { return JSON.stringify([s.submissions, s.voices, s.decisions]); }
+  let dataSig = sigOf(state);
+  function save() {
+    const sg = sigOf(state);
+    if (sg !== dataSig) { dataSig = sg; state.updatedAt = new Date().toISOString(); }
+    try { localStorage.setItem(STORE, JSON.stringify(state)); } catch (e) { /* ignore */ }
+    liveStamp();
+  }
 
   /* ---------- helpers ---------- */
   const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -30,9 +44,9 @@
   const today = () => new Date().toISOString().slice(0, 10);
   const uid = p => p + "-" + Math.random().toString(36).slice(2, 8);
   const roleOf = () => C.ROLES.find(r => r.id === state.role) || C.ROLES[0];
-  const isDonor = () => state.role === "donor";
+  const isPartner = () => state.role === "partner";
   const isTeacher = () => state.role === "teacher";
-  const can = { add: () => !["donor", "teacher"].includes(state.role), verify: () => state.role === "me", decide: () => state.role === "lead", review: () => ["staff", "me", "lead"].includes(state.role) };
+  const can = { add: () => !["partner", "teacher"].includes(state.role), verify: () => state.role === "me", decide: () => state.role === "lead", review: () => ["staff", "me", "lead"].includes(state.role) };
   const CURRENT_TERM = C.TERMS[C.TERMS.length - 1].id;
   const NAME_PHRASE = /\b(my name is|naitwa|jina langu ni)\b/i;
   const prettyDate = d => { const x = new Date(d + "T00:00:00"); return isNaN(x) ? esc(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
@@ -346,8 +360,8 @@
     return { list, onTrack };
   }
 
-  /* ---------- donor sentences ---------- */
-  function donorSentences() {
+  /* ---------- partner sentences ---------- */
+  function partnerSentences() {
     const out = [];
     const ns = northStarNow();
     if (ns && ns.baseTerm) {
@@ -421,42 +435,6 @@
   }
 
   /* ---------- charts ---------- */
-  function piecePath(x, y, w, h, k, r, socket, knob) {
-    const cy = y + h / 2;
-    let d = `M${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r}`;
-    if (knob) d += ` V${cy - k} A${k},${k} 0 0 1 ${x + w},${cy + k}`;
-    d += ` V${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} H${x + r} Q${x},${y + h} ${x},${y + h - r}`;
-    if (socket) d += ` V${cy + k} A${k},${k} 0 0 0 ${x},${cy - k}`;
-    return d + ` V${y + r} Q${x},${y} ${x + r},${y} Z`;
-  }
-  let svgSeq = 0;
-  function northStarSVG(ns) {
-    const w = 150, h = 150, k = 17, r = 18, padX = 4, top = 4, n = ns.values.length;
-    const W = n * w + k + padX * 2, H = h + top + 64, sid = "ns" + (++svgSeq);
-    let defs = "", body = "";
-    ns.values.forEach((o, i) => {
-      const x = padX + i * w, y = top, d = piecePath(x, y, w, h, k, r, i > 0, i < n - 1);
-      const fh = h * Math.max(0, Math.min(100, o.value)) / 100;
-      const by = isFinite(o.base) ? y + h - h * o.base / 100 : null;
-      const delta = isFinite(o.base) ? Math.round(o.value) - Math.round(o.base) : null;
-      const tip = `${o.name}: evident in ${Math.round(o.value)}% of ${ns.lessons} observed lessons, ${ns.schools.length} schools, ${termLabel(ns.term)}.` +
-        (by != null ? ` ${termLabel(ns.baseTerm)}: ${Math.round(o.base)}% for the same schools.` : "") + ` CBE link: ${o.cbe}.`;
-      defs += `<clipPath id="${sid}-${i}"><path d="${d}"/></clipPath>`;
-      body += `<g class="ns-piece" tabindex="0" data-tip="${esc(tip)}">
-        <path d="${d}" class="ns-track"/>
-        <rect clip-path="url(#${sid}-${i})" x="${x - 2}" y="${y + h - fh}" width="${w + k + 4}" height="${fh + 2}" class="ns-fill"/>
-        ${by != null ? `<line clip-path="url(#${sid}-${i})" x1="${x}" x2="${x + w}" y1="${by}" y2="${by}" class="ns-base"/>` : ""}
-        <path d="${d}" class="ns-edge"/>
-        <text x="${x + 18}" y="${y + 52}" class="ns-letter">${o.letter}</text>
-        <text x="${x + 18}" y="${y + h - 18}" class="ns-value ${fh > 34 ? "on-fill" : ""}">${Math.round(o.value)}%</text>
-        <text x="${x + 4}" y="${y + h + 28}" class="ns-name">${o.name}</text>
-        ${delta != null ? `<text x="${x + 4}" y="${y + h + 50}" class="ns-delta">${delta >= 0 ? "+" : ""}${delta} pts since ${termLabel(ns.baseTerm).replace(", 2026", "")}</text>` : ""}
-      </g>`;
-    });
-    const label = ns.values.map(o => `${o.name} ${Math.round(o.value)}%`).join(", ");
-    return `<div class="ns-scroll"><svg class="ns-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="North Star outcomes: ${esc(label)}"><defs>${defs}</defs>${body}</svg></div>`;
-  }
-
   function dumbbellSVG(items) {
     const rows = items.map(x => ({ s: x.row.site, c: x.row.county, d: x.row.delivered_by, n: +x.row.registered, cpc: +x.row.cost_per_completer, cpu: x.row.cost_per_completer / (x.row.using_pct / 100) }))
       .sort((a, b) => a.cpu - b.cpu);
@@ -526,7 +504,7 @@
     const f = Math.max(0, Math.min(1, frac)), r = (size - stroke) / 2, c = 2 * Math.PI * r, h = size / 2;
     return `<svg class="ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label)}">
       <circle cx="${h}" cy="${h}" r="${r}" class="ring-track" stroke-width="${stroke}"/>
-      <circle cx="${h}" cy="${h}" r="${r}" class="ring-fill" stroke-width="${stroke}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${h} ${h})"/>
+      <circle cx="${h}" cy="${h}" r="${r}" class="ring-fill" style="--len:${(c * f).toFixed(1)}" stroke-width="${stroke}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${h} ${h})"/>
       <text x="${h}" y="${h}" dominant-baseline="central" text-anchor="middle" class="ring-text">${Math.round(f * 100)}%</text></svg>`;
   }
 
@@ -543,7 +521,7 @@
       const a = sr.vals[0], z = sr.vals[sr.vals.length - 1], d = Math.round(z) - Math.round(a), tg = o.targets && o.targets[sr.key];
       const tip = `${sr.name}: ${sr.vals.map((v, k) => `${terms[k]} ${Math.round(v)}%`).join(", ")}${tg ? `. Target ${tg}%` : ""}`;
       return `<div class="prog-row" role="listitem" tabindex="0" data-tip="${esc(tip)}" style="--c:${sr.color};--delay:${i * 90}ms">
-        <span class="prog-badge">${sr.letter}</span>
+        <span class="prog-badge">${kid(sr.key, true)}</span>
         <span class="prog-name">${esc(sr.name)}</span>
         <span class="prog-val">${Math.round(z)}%</span>
         <div class="prog-track" style="${grid}">
@@ -577,7 +555,7 @@
         }
         g += `<text class="fun-stage" x="${cx}" y="${y - 7}" text-anchor="middle">${esc(s.label)}</text>
           <g tabindex="0" data-tip="${esc(`${gr.name}: ${s.label.toLowerCase()}, ${Math.round(s.value)} of every 100 who registered (${s.note})`)}">
-          <rect x="${cx - w / 2}" y="${y}" width="${w}" height="${h}" rx="4" style="fill:${gr.color}"/>
+          <rect class="fun-bar" x="${cx - w / 2}" y="${y}" width="${w}" height="${h}" rx="4" style="fill:${gr.color}"/>
           <text class="fun-val" x="${cx + w / 2 + 8}" y="${y + h / 2 + 5}">${Math.round(s.value)}</text></g>`;
       });
     });
@@ -686,97 +664,265 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="EdTech pilots by evidence stage">${g}</svg>`;
   }
 
-  const dcard = (span, title, sub, body, link) => `<section class="dcard span-${span}"><div class="dcard-head"><h2>${title}</h2>${link ? `<a class="more" href="${link}">Details</a>` : ""}</div>${sub ? `<p class="dsub">${sub}</p>` : ""}<div class="dbody">${body}</div></section>`;
   const swatch = (color, label) => `<span class="lg-item"><span class="sw" style="background:${color}"></span>${esc(label)}</span>`;
 
-  function viewOverview() {
-    const ns = northStarNow(), m = innovated(), f = fellowship(), e = events(), tb = testbed(), t = trust(), pr = prompts();
-    const learners = sum(C.SCHOOLS, s => s.learners), estLearners = m ? Math.round(m.users * 45 / 100) * 100 : 0;
+  /* ---------- the North Star as children ---------- */
+  const KID_ARMS = {
+    agency: '<path d="M8.8 13.6 L5.4 20.2"/><path d="M15.2 13.2 L18.6 3.2"/>',
+    belonging: '<path d="M8.6 14.2 L0.4 16.4"/><path d="M15.4 14.2 L23.6 16.4"/>',
+    creativity: '<path d="M8.8 13.6 L5.4 20.2"/><path d="M15.2 13.2 L19.2 7.4"/>',
+    delight: '<path d="M9 13 L4 4.2"/><path d="M15 13 L20 4.2"/>',
+    expertise: '<path d="M8.8 13.6 L7.2 17.8"/><path d="M15.2 13.6 L16.8 17.8"/>'
+  };
+  const KID_EXTRA = {
+    creativity: '<polygon class="k-acc" points="19.6,0.6 20.5,2.6 22.6,2.8 21,4.2 21.5,6.3 19.6,5.2 17.7,6.3 18.2,4.2 16.6,2.8 18.7,2.6"/>',
+    expertise: '<rect class="k-acc" x="5.6" y="15.6" width="12.8" height="7" rx="1.2"/><path class="k-spine" d="M12 15.6 V22.6"/>'
+  };
+  const KID_HINT = { agency: "chooses and acts", belonging: "feels they matter", creativity: "imagines and solves", delight: "finds joy", expertise: "masters skills" };
+  const kid = (key, lit) => `<svg class="kid${lit ? " lit" : ""}" viewBox="0 0 24 32" aria-hidden="true"><g class="k-arms">${KID_ARMS[key]}</g><circle cx="12" cy="5.6" r="4.1"/><rect x="8" y="10.8" width="8" height="11.6" rx="3.6"/><rect x="8.6" y="20.6" width="2.7" height="9.4" rx="1.35"/><rect x="12.7" y="20.6" width="2.7" height="9.4" rx="1.35"/>${KID_EXTRA[key] || ""}</svg>`;
 
-    /* stat tiles, each with its own small visual */
-    const stats = `<div class="dash-kpis">
-      <div class="stat"><div class="stat-label">Learners reached</div><div class="stat-value">${fmt(learners)}</div>
-        <div class="mini-stack" data-tip="${esc(`${fmt(learners)} learners in partner schools, plus an estimated ${fmt(estLearners)} taught by teachers using InnovatED tools (45 per class)`)}" tabindex="0"><span class="solid" style="flex:${learners}"></span><span class="est" style="flex:${estLearners || 1}"></span></div>
-        <div class="stat-sub">in partner schools, plus about ${fmt(estLearners)} through InnovatED (estimate)</div></div>
-      <div class="stat stat-row"><div><div class="stat-label">Teachers using tools</div><div class="stat-value">${m ? fmt(m.users) : "n/a"}</div><div class="stat-sub">of ${m ? fmt(m.useCompleted) : 0} trained, at 8 weeks · target ${pct(C.TARGETS.use8)}</div></div>${m ? ring(m.usePct, 64, 8, "Share of trained teachers using the tool") : ""}</div>
-      <div class="stat"><div class="stat-label">Fellows who led a full test</div><div class="stat-value">${f.led}<small>/${f.n}</small></div>
-        <div class="mini-dots" aria-hidden="true">${f.rows.map(r => `<i class="${r.led_full_test === "Yes" ? "on" : ""}"></i>`).join("")}</div><div class="stat-sub">Guskey level 4: using it in practice</div></div>
-      <div class="stat"><div class="stat-label">Event commitments followed up</div><div class="stat-value">${e.made ? pct(e.followed / e.made) : "n/a"}</div>
-        <div class="mini-cols">${e.rows.map((r, i) => { const v = r.commitments_followed / r.commitments_made; return `<div class="mini-col" tabindex="0" data-tip="${esc(`${r.event}: ${r.commitments_followed} of ${r.commitments_made} followed up`)}"><span style="height:${Math.round(v * 40)}px"></span>KSE ${i + 1}</div>`; }).join("")}</div><div class="stat-sub">${e.followed} of ${e.made} within a term · target ${pct(C.TARGETS.commitments)}</div></div>
-      <div class="stat"><div class="stat-label">Data verified</div><div class="stat-value">${t.verified}<small>/${t.total}</small></div>
-        <div class="seg-bar" tabindex="0" data-tip="${esc(`${t.verified} verified, ${t.pending} awaiting review, ${t.returned} returned`)}"><span class="v" style="flex:${t.verified}"></span>${t.pending ? `<span class="w" style="flex:${t.pending}"></span>` : ""}${t.returned ? `<span class="r" style="flex:${t.returned}"></span>` : ""}</div>
-        <div class="stat-sub">${t.pending} awaiting review · ${t.held} rows held back</div></div>
+  /* Ten children per outcome: lit children are lessons (or classrooms) where the outcome showed up. */
+  function childRows(items, o) {
+    const rows = items.map((it, r) => {
+      const n = Math.max(0, Math.min(10, Math.round(it.value / 10)));
+      const hasBase = isFinite(it.base), b = hasBase ? Math.max(0, Math.min(10, Math.round(it.base / 10))) : n;
+      const d = hasBase ? Math.round(it.value) - Math.round(it.base) : null;
+      const kids = Array.from({ length: 10 }, (_, i) => `<span class="kid-slot${i < n && i >= b ? " new" : ""}" style="--i:${i}">${kid(it.key, i < n)}</span>`).join("");
+      return `<div class="kid-row ${it.key}" role="listitem" tabindex="0" data-tip="${esc(`${it.name}: ${o.tip(it)}`)}" style="--c:${it.color};--row:${r}"${o.go ? ` data-action="go" data-to="${o.go}"` : ""}>
+        <div class="kid-name"><span class="kid-badge">${kid(it.key, true)}</span><span>${esc(it.name)}<small>${esc(KID_HINT[it.key])}</small></span></div>
+        <div class="kid-line">${kids}</div>
+        <div class="kid-val"><b><span data-count="${n}">${n}</span><i>/10</i></b>${d != null ? `<span class="kid-delta ${d >= 0 ? "up" : "down"}">${d >= 0 ? "+" : ""}${d} pts</span>` : `<span class="kid-pct">${Math.round(it.value)}%</span>`}</div>
+      </div>`;
+    }).join("");
+    return `<div class="kids" role="list" aria-label="${esc(o.label)}">${rows}
+      <div class="kid-legend"><span><span class="kid-key">${kid("delight", true)}</span>${esc(o.unit)}</span>${items.some(it => isFinite(it.base)) ? `<span><i class="spark">✦</i>new since ${esc(o.baseLabel)}</span>` : ""}</div></div>`;
+  }
+
+  /* A small child badge stands in for the old A to E letters wherever an outcome is named. */
+  const nsKid = (key, title) => `<span class="ns-kid" style="--c:${NS_COLOR[key]}"${title ? ` title="${esc(title)}"` : ""}>${kid(key, true)}</span>`;
+  const nsKids = (ns, go) => childRows(ns.values.map(v => ({ key: v.key, name: v.name, color: NS_COLOR[v.key], value: v.value, base: v.base })),
+    { label: "North Star outcomes as children", unit: "a lesson where children clearly showed it, out of 10", baseLabel: ns.baseTerm ? termLabel(ns.baseTerm).replace(", 2026", "") : "Term 1", go,
+      tip: it => `clearly evident in ${Math.round(it.value)}% of observed lessons${isFinite(it.base) ? ` (${ns.baseTerm ? termLabel(ns.baseTerm).replace(", 2026", "") : "Term 1"}: ${Math.round(it.base)}%)` : ""}` });
+
+  /* ---------- small dashboard pieces ---------- */
+  const MARK = `<svg class="cap-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M16 14h12v-2a5 5 0 0 1 10 0v2h12v12h-2a5 5 0 0 0 0 10h2v14H38v-2a5 5 0 0 0-10 0v2H16V36h2a5 5 0 0 0 0-10h-2z"/></svg>`;
+  const CAP = {
+    north: "A world where learners thrive starts one lesson at a time.",
+    progress: "Small steps, every term. We go further together.",
+    funnel: "Training is the start. A tool in a teacher's hands is the win.",
+    cost: "Value for money is counted in classrooms, not certificates.",
+    map: "Proximate leaders, from Turkana to Kajiado.",
+    heat: "Every school is writing its own whole child story.",
+    waffle: "Every Fellow on their own path, none walking alone.",
+    guskey: "From a good session to a changed classroom.",
+    feedback: "Feedback within five days: small things, done with great love.",
+    events: "If you want to go far, go together.",
+    ladder: "Evidence before scale. That's how we redefine excellence.",
+    teachers: "Teachers know what's working. We listen and learn.",
+    decisions: "Listen, learn, then decide.",
+    voice: "Listen and learn: their words come first.",
+    activity: "Every check-in and every review, as it happens.",
+    todo: "Do small things with great love, starting with these.",
+    queue: "Nothing counts until it's checked.",
+    held: "Honest data is kind data.",
+    fresh: "Fresh data, fair decisions.",
+    checks: "Redefining excellence, one row at a time.",
+    hello: "We are the ones we've been waiting for.",
+    ideas: "Ideas from classrooms like yours.",
+    time: "Time saved is time given back to children.",
+    report: "Honest numbers and real voices, ready to share."
+  };
+  const card = o => `<section class="dcard span-${o.span || 6}${o.cls ? " " + o.cls : ""}" data-card="${o.id}" data-sig="${esc(o.sig == null ? "" : String(o.sig))}">
+      <div class="dcard-head"><h2>${o.title}</h2>${o.link ? `<a class="more" href="${o.link}" aria-label="Details: ${esc(o.title)}">Details</a>` : ""}</div>
+      ${o.meta ? `<p class="dmeta">${o.meta}</p>` : ""}
+      <div class="dbody">${o.body}</div>
+      ${o.cap ? capLine(o.cap) : ""}
+    </section>`;
+  const capLine = text => `<p class="dcap">${MARK}<span>${esc(text)}</span></p>`;
+  const numOut = (v, f) => (f === "pct" ? Math.round(v) + "%" : f === "kes" ? kes(v) : f === "dec" ? String(Math.round(v * 10) / 10) : fmt(v));
+  const num = (v, f) => (isFinite(v) ? `<span data-count="${v}" data-fmt="${f || "int"}">${numOut(v, f)}</span>` : "n/a");
+  const tile = o => `<div class="stat${o.side ? " stat-row" : ""}" data-card="tile-${o.id}" data-sig="${esc(String(o.sig == null ? o.value : o.sig))}"${o.tip ? ` data-tip="${esc(o.tip)}" tabindex="0"` : ""}>
+      ${o.side ? "<div>" : ""}<div class="stat-label">${esc(o.label)}</div><div class="stat-value">${num(o.value, o.fmt)}${o.of != null ? `<small>/${fmt(o.of)}</small>` : ""}</div>${o.side ? "" : o.mini || ""}<div class="stat-sub">${o.sub || ""}</div>${o.side ? `</div>${o.side}` : ""}
     </div>`;
+  const ago = d => {
+    if (!d) return "";
+    const days = Math.round((Date.parse(today()) - Date.parse(String(d).slice(0, 10))) / 864e5);
+    return days <= 0 ? "today" : days === 1 ? "yesterday" : days < 30 ? `${days} days ago` : prettyDate(String(d).slice(0, 10));
+  };
+  function activity(limit) {
+    const ev = [];
+    state.submissions.forEach(s => historyOf(s).forEach(h => ev.push({ at: h.at, what: h.what, title: s.title, who: h.who, kind: /^Verified/.test(h.what) ? "ok" : /^Returned/.test(h.what) ? "bad" : "wait" })));
+    state.decisions.forEach(d => ev.push({ at: d.date, what: "Decision recorded", title: d.title, who: d.owner, kind: "dec" }));
+    state.voices.forEach(v => ev.push({ at: v.added, what: "New voice", title: `${v.role}, ${v.county}`, who: "", kind: "voice" }));
+    return ev.filter(e => e.at).sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, limit);
+  }
 
-    /* North Star trend, matched schools only */
+  function dashData() {
+    const ns = northStarNow(), m = innovated(), f = fellowship(), e = events(), tb = testbed(), t = trust(), pr = prompts(), tr = teacherReport();
+    const learners = sum(C.SCHOOLS, s => s.learners), estLearners = m ? Math.round(m.users * 45 / 100) * 100 : 0;
     const matched = ns ? ns.schools : [];
-    const termsWith = C.TERMS.filter(x => northStar(x.id, matched).schools.length === matched.length && matched.length);
+    const termsWith = C.TERMS.filter(x => matched.length && northStar(x.id, matched).schools.length === matched.length);
     const series = C.NORTH_STAR.map(o => ({ key: o.key, letter: o.letter, name: o.name, color: NS_COLOR[o.key], vals: termsWith.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
-    const trend = termsWith.length > 1 ? progressRows(series, termsWith.map(x => x.label.replace(", 2026", "")), { targets: { agency: C.TARGETS.agency }, label: "How each North Star outcome moved by term" }) + dataTable(["Outcome", ...termsWith.map(x => x.label)], series.map(sr => [sr.name, ...sr.vals.map(v => Math.round(v) + "%")])) : empty("Trends appear once two terms are verified.");
+    return { ns, m, f, e, tb, t, pr, tr, learners, estLearners, matched, termsWith, series, fp: footprint() };
+  }
 
-    /* InnovatED funnel and bubble */
-    const fun = m ? funnelSVG([["Metis-led", m.metis, "var(--teal)"], ["Partner-led", m.partner, "var(--orange)"]].map(([name, a, color]) => ({
-      name, color, stages: [
+  /* ---------- dashboard cards ---------- */
+  const DC = {
+    north: (D, span) => D.ns ? card({ id: "north", span, cls: "kid-card", title: "How whole are the children we reach?", link: "#/programs/schools",
+      meta: `${termLabel(D.ns.term)} · ${D.ns.schools.length} schools · ${D.ns.lessons} lessons observed`, cap: CAP.north, sig: D.ns.values.map(v => Math.round(v.value)).join(","),
+      body: nsKids(D.ns, "#/programs/schools") }) : "",
+    progress: (D, span) => card({ id: "progress", span, title: "Term by term", link: "#/programs/schools", meta: `Same ${D.matched.length} schools, ${D.termsWith.length} terms`, cap: CAP.progress, sig: D.series.map(s => s.vals.map(Math.round).join("-")).join(","),
+      body: D.termsWith.length > 1 ? progressRows(D.series, D.termsWith.map(x => x.label.replace(", 2026", "")), { targets: { agency: C.TARGETS.agency }, label: "How each North Star outcome moved by term" }) + dataTable(["Outcome", ...D.termsWith.map(x => x.label)], D.series.map(sr => [sr.name, ...sr.vals.map(v => Math.round(v) + "%")])) : empty("Trends appear once two terms are verified.") }),
+    funnel: (D, span) => D.m ? card({ id: "funnel", span, title: "From training to the classroom", link: "#/programs/innovated", meta: `Per 100 teachers registered · ${termLabel(D.m.term)}`, cap: CAP.funnel, sig: `${Math.round(D.m.metis.per100)}-${Math.round(D.m.partner.per100)}`,
+      body: funnelSVG([["Metis-led", D.m.metis, "var(--teal)"], ["Partner-led", D.m.partner, "var(--orange)"]].map(([name, a, color]) => ({ name, color, stages: [
         { label: "Registered", value: 100, note: `${fmt(a.useRegistered)} teachers` },
         { label: "Completed", value: a.useCompleted / a.useRegistered * 100, note: `${fmt(a.useCompleted)} teachers` },
-        { label: "Using at 8 weeks", value: a.per100, note: `about ${fmt(a.users)} teachers` }]
-    }))) : empty("No verified InnovatED data yet.");
+        { label: "Using at 8 weeks", value: a.per100, note: `about ${fmt(a.users)} teachers` }] }))) +
+        dataTable(["Delivery", "Registered", "Completed", "Using at 8 weeks"], [["Metis-led", D.m.metis], ["Partner-led", D.m.partner]].map(([n, a]) => [n, `100 (${fmt(a.useRegistered)} teachers)`, `${Math.round(a.useCompleted / a.useRegistered * 100)} (${fmt(a.useCompleted)})`, `${Math.round(a.per100)} (about ${fmt(a.users)})`])) }) : "",
+    cost: (D, span) => D.m ? card({ id: "cost", span, title: "Cost against results", link: "#/programs/innovated", meta: "Each bubble is a site · size = teachers registered", cap: CAP.cost, sig: Math.round(D.m.costPerActive),
+      body: bubbleSVG(D.m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` + dataTable(["Site", "County", "Delivered by", "Registered", "Using at 8 weeks", "KES per teacher using"], D.m.useI.map(x => [x.row.site, x.row.county, x.row.delivered_by, x.row.registered, x.row.using_pct + "%", fmt(x.row.cost_per_completer / (x.row.using_pct / 100))])) }) : "",
+    map: (D, span) => card({ id: "map", span, title: "Where we work", meta: `${Object.keys(D.fp).length} counties · tap one`, cap: CAP.map, sig: Object.entries(D.fp).map(([c, v]) => c + (v.teachers + v.learners + v.fellows)).join(","), body: countyMap(D.fp) }),
+    heat: (D, span) => card({ id: "heat", span, title: "School by school", link: "#/programs/schools", meta: "Latest verified term per school", cap: CAP.heat, sig: latestSchoolObs().map(x => x.found ? x.found.term : "").join(","),
+      body: `<div class="table-wrap"><table class="heat compact"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th>${nsKid(o.key, o.name)}</th>`).join("")}</tr></thead><tbody>
+        ${latestSchoolObs().map(({ s, found, waiting }) => `<tr><th scope="row">${esc(s.label.replace("Partner ", ""))}<span class="small muted"> · ${esc(s.county)}${found && D.ns && found.term !== D.ns.term ? ` · ${termLabel(found.term).replace(", 2026", "")}` : ""}</span>${waiting && can.review() ? ` ${chip("wait", "New data waiting")}` : ""}</th>
+          ${C.NORTH_STAR.map(o => { const v = found ? +found.row[o.key + "_pct"] : NaN; return `<td class="cell" style="background:${isFinite(v) ? heatColor(v) : "transparent"}" tabindex="0" data-tip="${esc(`${s.label}, ${o.name}: ${isFinite(v) ? v + "%" : "no data"}`)}">${isFinite(v) ? v : "n/a"}</td>`; }).join("")}</tr>`).join("")}
+        </tbody></table></div>` }),
+    waffle: (D, span) => { const f = D.f, order = { "On track": 0, "Needs support": 1, "Re-sprint": 2 }, cl = { "On track": ["ok", "✓"], "Needs support": ["warn", "!"], "Re-sprint": ["bad", "↺"] };
+      return card({ id: "waffle", span, title: "The Fellowship cohort", link: "#/programs/fellowship", meta: `${f.n} Fellows · ${termLabel(f.term)}`, cap: CAP.waffle, sig: f.status.map(s => s[1]).join("-"),
+        body: `<div class="wf" role="img" aria-label="${esc(f.status.map(s => `${s[1]} ${s[0]}`).join(", "))}">${[...f.rows].sort((a, b) => order[a.status] - order[b.status]).map((r, i) => `<span class="wf-cell wf-${cl[r.status][0]}" style="--i:${i}" tabindex="0" data-tip="${esc(`${r.fellow}: ${r.status}, ${r.org_type}, ${r.county}`)}">${cl[r.status][1]}</span>`).join("")}</div>
+          <div class="lg">${f.status.map(s => `<span class="lg-item"><span class="wf-key wf-${cl[s[0]][0]}">${cl[s[0]][1]}</span>${esc(s[0])} <strong>${s[1]}</strong></span>`).join("")}</div>` }); },
+    guskey: (D, span) => card({ id: "guskey", span, title: "From reaction to learners", link: "#/programs/fellowship", meta: "Fellows reaching each Guskey level", cap: CAP.guskey, sig: [D.f.relevant, D.f.m2, D.f.sponsor, D.f.led, D.f.learner].join("-"),
+      body: staircase([{ label: "sessions feel relevant", short: "Reaction", value: D.f.relevant }, { label: "Milestone 2 met", short: "Learning", value: D.f.m2 }, { label: "sponsor actively supporting", short: "Support", value: D.f.sponsor }, { label: "led a full design test", short: "Use", value: D.f.led }, { label: "collecting learner evidence", short: "Learners", value: D.f.learner }], D.f.n) }),
+    feedback: (D, span) => card({ id: "feedback", span, title: "Feedback turnaround", link: "#/programs/fellowship", meta: "Median days · target 5", cap: CAP.feedback, sig: D.f.fbNow ? D.f.fbNow.median_days : "",
+      body: D.f.feedback.length ? `<div class="bullet-wrap"><div class="bullet-big"><span>${num(+D.f.fbNow.median_days, "dec")}</span> days</div>${bullet(D.f.feedback, 5, 12)}</div>` : empty("No feedback data yet.") }),
+    events: (D, span) => { const e = D.e, per = 5;
+      return card({ id: "events", span, title: "Who comes to Knowledge Sharing", link: "#/programs/events", meta: `${fmt(e.attendees)} people · ${e.rows.length} events · each dot is ${per} people`, cap: CAP.events, sig: `${e.attendees}-${e.followed}`,
+        body: e.rows.length ? `<div class="picto-wrap"><div class="picto">${e.groups.map(gp => { const v = sum(e.rows, r => +r[gp[0]]), full = Math.floor(v / per), part = v % per >= per / 2; return `<div class="picto-row" tabindex="0" data-tip="${esc(`${gp[1]}: ${v} people across ${e.rows.length} events`)}"><span class="picto-label">${esc(gp[1])}</span><span class="picto-dots">${Array.from({ length: full }, (_, i) => `<i style="--i:${i}"></i>`).join("")}${part ? `<i class="half" style="--i:${full}"></i>` : ""}</span><span class="picto-n">${v}</span></div>`; }).join("")}</div>
+          <div class="picto-side">${ring(e.followed / e.made, 96, 11, "Commitments followed up")}<div class="small">commitments followed up</div></div></div>` : empty("No verified event data yet.") }); },
+    ladder: (D, span) => { const pilots = [...D.tb.verified, ...(can.review() ? D.tb.pending : [])];
+      return card({ id: "ladder", span, title: "EdTech evidence ladder", link: "#/programs/testbed", meta: "Dot size = learners reached", cap: CAP.ladder, sig: pilots.map(p => p.stage + p.status).join(","), body: pilots.length ? ladderSVG(pilots) : empty("No pilots yet.") }); },
+    teachers: (D, span) => D.tr.n ? card({ id: "teachers", span, title: "What teachers report", link: "#/programs/innovated", meta: `${D.tr.n} verified check-ins · ${termLabel(D.tr.term)}`, cap: CAP.teachers, sig: `${D.tr.n}-${D.tr.recent}`, body: teacherPanel(D.tr) }) : "",
+    decisions: (D, span) => { const due = state.decisions.filter(isDue).length;
+      return card({ id: "decisions", span, title: "Needs a decision", link: "#/decide", meta: "From rules agreed in advance", cap: CAP.decisions, sig: `${due}-${D.pr.list.length}`,
+        body: `${due ? `<a class="prompt-mini" href="#/decide"><span class="sev decide">Due</span>${due} decision${due > 1 ? "s" : ""} due for another look</a>` : ""}${D.pr.list.slice(0, 4).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span>${esc(p.title)}</a>`).join("")}` }); },
+    voice: (D, span) => { const voice = state.voices.filter(v => v.consent); const spot = voice.length ? voice[new Date().getDate() % voice.length] : null;
+      return spot ? card({ id: "voice", span, title: "In their words", link: "#/voices", cap: CAP.voice, sig: spot.id,
+        body: `<figure class="spot"><blockquote>${esc(spot.text)}</blockquote><figcaption>${esc(spot.role)} · ${esc(spot.county)} <span class="voice-tags">${spot.tags.filter(t => KID_ARMS[t]).map(t => `<span class="voice-kid" style="--c:${NS_COLOR[t]}" title="${esc(C.NORTH_STAR.find(n => n.key === t).name)}">${kid(t, true)}</span>`).join("")}</span></figcaption></figure>` }) : ""; },
+    activity: (D, span) => { const ev = activity(7);
+      return card({ id: "activity", span, cls: "activity-card", title: `<span class="live-dot"></span>Just in`, meta: "Latest data, reviews and decisions", cap: CAP.activity, sig: ev.length ? ev[0].at + ev[0].what : "",
+        body: `<ol class="feed">${ev.map(x => `<li class="feed-${x.kind}"><span class="feed-dot"></span><div><strong>${esc(x.what)}</strong> <span class="muted">${esc(x.title)}</span><div class="small muted">${esc(ago(x.at))}${x.who ? ` · ${esc(x.who)}` : ""}</div></div></li>`).join("")}</ol>` }); },
+    todo: (D, span) => { const items = [];
+      state.submissions.filter(s => s.status === "returned").forEach(s => items.push(["bad", `Fix and resubmit: ${s.title}`, "#/review", "Open"]));
+      if (D.t.pending) items.push(["wait", `${D.t.pending} submission${D.t.pending > 1 ? "s" : ""} waiting for M&E review`, "#/review", "See"]);
+      if (D.e.rows.length < 3) items.push(["warn", "Add attendance for KSE Term 3: Fellows showcase", "#/add", "Add", "event_attendance"]);
+      const sup = D.f.status.filter(s => s[0] !== "On track").reduce((a, s) => a + s[1], 0);
+      if (sup) items.push(["warn", `${sup} Fellows need support or are re-sprinting`, "#/programs/fellowship", "See"]);
+      if (D.tr.n) { const v = D.tr.support.filter(x => ["Coaching visit", "Help with the tool"].includes(x[0])).reduce((a, x) => a + x[1], 0); if (v) items.push(["wait", `Plan support for ${v} teachers who asked in check-ins`, "#/programs/innovated", "See"]); }
+      return card({ id: "todo", span, title: "Your list this week", cap: CAP.todo, sig: items.length,
+        body: `<ul class="todo">${items.map(i => `<li class="todo-${i[0]}"><span class="todo-box" aria-hidden="true"></span><span>${esc(i[1])}</span><a class="btn small" href="${i[2]}"${i[4] ? ` data-action="pick-ds-link" data-ds="${i[4]}"` : ""}>${i[3]}</a></li>`).join("") || "<li>Nothing waiting. Lovely.</li>"}</ul>` }); },
+    queue: (D, span) => { const q = pending();
+      return card({ id: "queue", span, title: "Waiting for review", link: "#/review", meta: `${q.length} submission${q.length === 1 ? "" : "s"}`, cap: CAP.queue, sig: q.map(s => s.id + s.rows.length).join(","),
+        body: q.length ? `<ul class="queue">${q.map(s => { const res = checkRows(s.dataset, s.rows), fail = res.filter(r => r.level === "fail").length, flag = res.filter(r => r.level === "flag").length; return `<li><div><strong>${esc(s.title)}</strong><div class="small muted">${esc(C.PROGRAMS.find(p => p.id === C.DATASETS[s.dataset].program).short)} · ${s.rows.length} row${s.rows.length === 1 ? "" : "s"} · ${esc(ago(s.submittedAt))}</div></div><div class="check-sum">${chip("ok", (s.rows.length - fail - flag) + " passed")}${flag ? chip("warn", flag + " flagged") : ""}${fail ? chip("bad", fail + " failing") : ""}</div><button class="btn small primary" data-action="open-review" data-id="${esc(s.id)}">Review</button></li>`; }).join("")}</ul>` : empty("Nothing waiting. Every submission has been reviewed.") }); },
+    held: (D, span) => { const rows = [];
+      state.submissions.filter(s => s.status === "verified").forEach(s => checkRows(s.dataset, s.rows).forEach((r, i) => { if (r.exclRow || r.exclUse || r.level === "flag") rows.push([s, s.rows[i], r]); }));
+      return card({ id: "held", span, title: "Held back or flagged", link: "#/review", meta: `${rows.length} rows in verified data`, cap: CAP.held, sig: rows.length,
+        body: `<ul class="held">${rows.slice(0, 8).map(([s, row, r]) => { const cl = checkLabel(r); return `<li>${chip(cl.cls, cl.text)}<div><strong>${esc(row.site || row.school || row.fellow || row.event || row.pilot || "")}</strong> <span class="muted small">${esc(C.DATASETS[s.dataset].label)}</span><div class="small">${esc(r.issues.map(x => x.msg).join(". "))}</div></div></li>`; }).join("")}</ul>` }); },
+    fresh: (D, span) => { const items = Object.entries(C.DATASETS).map(([k, d]) => { const v = subsOf(k, "verified").map(s => s.reviewedAt || s.submittedAt).sort().pop(); const days = v ? Math.max(0, Math.round((Date.parse(today()) - Date.parse(v)) / 864e5)) : 99; return { label: d.label, value: Math.min(days, 90), text: v ? `${days} days` : "none yet", cls: days > 45 ? "warn-fill" : "", tip: `${d.label}: last verified ${v ? prettyDate(v) : "never"}` }; }).sort((a, b) => b.value - a.value);
+      return card({ id: "fresh", span, title: "How fresh is each dataset?", meta: "Days since last verified · amber after 45", cap: CAP.fresh, sig: items.map(i => i.text).join(","), body: bars(items, { max: 90 }) }); },
+    checks: (D, span) => { const t = D.t, pass = t.rows - t.held - t.flagged;
+      return card({ id: "checks", span, title: "What the checks found", meta: `${fmt(t.rows)} rows checked`, cap: CAP.checks, sig: `${pass}-${t.flagged}-${t.held}`,
+        body: `<div class="stack-bar" role="img" aria-label="${pass} passed, ${t.flagged} flagged, ${t.held} held back"><span class="sb-ok" style="flex:${pass}" data-tip="${pass} rows passed every check" tabindex="0"></span>${t.flagged ? `<span class="sb-warn" style="flex:${t.flagged}" data-tip="${t.flagged} rows flagged: counted, with a caution" tabindex="0"></span>` : ""}${t.held ? `<span class="sb-bad" style="flex:${t.held}" data-tip="${t.held} rows held back from the figures they affect" tabindex="0"></span>` : ""}</div>
+          <div class="lg">${swatch("var(--teal)", `✓ Passed ${pass}`)}${swatch("#fab219", `! Flagged ${t.flagged}`)}${swatch("#ec835a", `✕ Held back ${t.held}`)}</div>
+          <div class="trust-big">${num(t.rows ? pass / t.rows * 100 : 0, "pct")}<span>of rows clean on arrival</span></div>` }); },
+    hello: (D, span) => card({ id: "hello", span, cls: "hello-card", title: "Your fortnightly check-in", cap: CAP.hello, sig: state.myCheckins || 0,
+      body: `<div class="hello"><div class="hello-kids" aria-hidden="true">${C.NORTH_STAR.map((o, i) => `<span style="--c:${NS_COLOR[o.key]};--i:${i}">${kid(o.key, true)}</span>`).join("")}</div>
+        <div><p class="hello-lead">Two minutes, in English or Kiswahili. No learner is ever named.</p><p class="small muted">${state.myCheckins ? `You've sent ${state.myCheckins} check-in${state.myCheckins > 1 ? "s" : ""} from this device${state.myLastCheckin ? `, the last one ${ago(state.myLastCheckin)}` : ""}.` : "You haven't sent a check-in from this device yet."}</p>
+        <a class="btn primary big" href="#/checkin">Send a check-in</a></div></div>` }),
+    teacherKids: (D, span) => D.tr.n ? card({ id: "tkids", span, cls: "kid-card", title: "What teachers are seeing", meta: `${D.tr.n} classrooms checked in · ${termLabel(D.tr.term)}`, cap: CAP.teachers, sig: D.tr.outcomes.map(x => x[1]).join("-"),
+      body: childRows(D.tr.outcomes.map(([o, v]) => ({ key: o.key, name: o.name, color: NS_COLOR[o.key], value: v / D.tr.n * 100 })), { label: "Outcomes teachers saw this week", unit: "a classroom where teachers saw it this week, out of 10", tip: it => `seen in ${Math.round(it.value)}% of classrooms that checked in` }) }) : "",
+    time: (D, span) => D.tr.n ? card({ id: "time", span, title: "Time given back", meta: "From teachers using the tool", cap: CAP.time, sig: `${D.tr.minutes}-${D.tr.recent}`,
+      body: `<div class="time-card"><div class="time-big">${num(Math.round(D.tr.minutes || 0))}<span>minutes a week, median</span></div>${ring(D.tr.recent / D.tr.n, 104, 12, "Teachers who used the tool this week or last")}<div class="small muted">used the tool this week or last</div></div>` }) : "",
+    ideas: (D, span) => { const ideas = D.tr.rows.filter(r => String(r.what_worked || "").trim()).slice(-5).reverse();
+      return card({ id: "ideas", span, title: "Ideas from other teachers", cap: CAP.ideas, sig: ideas.length,
+        body: `<ul class="ideas">${ideas.map(r => `<li><span class="idea-q">“</span><div><strong>${esc(r.what_worked)}</strong><div class="small muted">${esc(r.grade_band)} · ${esc(r.county)}</div></div></li>`).join("")}</ul>` }); },
+    support: (D, span) => D.tr.n ? card({ id: "support", span, title: "Support teachers asked for", meta: `${D.tr.n} check-ins`, cap: "Ask, and a coach will answer within a week.", sig: D.tr.support.map(x => x[1]).join("-"),
+      body: bars(D.tr.support.filter(x => x[0] !== "None right now").map(([k, v]) => ({ label: k, value: v, text: String(v), cls: "slate-fill" })), { max: D.tr.n }) }) : "",
+    report: (D, span) => card({ id: "report", span, cls: "report-card", title: "Your partner report", cap: CAP.report, sig: "report",
+      body: `<p class="hello-lead">Verified results, the sentences behind them and the voices that bring them to life, ready to print or download.</p><a class="btn primary big" href="#/report">Open the partner report</a>` })
+  };
 
-    /* Heatmap */
-    const heat = `<div class="table-wrap"><table class="heat compact"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th title="${o.name}"><span class="ns-dot">${o.letter}</span></th>`).join("")}</tr></thead><tbody>
-      ${latestSchoolObs().map(({ s, found, waiting }) => `<tr><th scope="row">${esc(s.label.replace("Partner ", ""))}<span class="small muted"> · ${esc(s.county)}${found && found.term !== ns?.term ? ` · ${termLabel(found.term).replace(", 2026", "")}` : ""}</span>${waiting && !isDonor() ? ` ${chip("wait", "New data waiting")}` : ""}</th>
-        ${C.NORTH_STAR.map(o => { const v = found ? +found.row[o.key + "_pct"] : NaN; return `<td class="cell" style="background:${isFinite(v) ? heatColor(v) : "transparent"}" tabindex="0" data-tip="${esc(`${s.label}, ${o.name}: ${isFinite(v) ? v + "%" : "no data"}`)}">${isFinite(v) ? v : "n/a"}</td>`; }).join("")}</tr>`).join("")}
-      </tbody></table></div>`;
+  /* Two shorter cards stacked in one column, so a tall card (the map) has a partner of the same height. */
+  const stack = (span, ...cards) => `<div class="dstack span-${span}">${cards.join("")}</div>`;
+  const ROLE_DASH = {
+    lead: { eyebrow: "Leadership view", title: "Whole Child Learning at a glance",
+      tiles: D => [
+        { id: "learners", label: "Learners reached", value: D.learners, sub: `+ about ${fmt(D.estLearners)} through InnovatED (estimate)`, mini: `<div class="mini-stack"><span class="solid" style="flex:${D.learners}"></span><span class="est" style="flex:${D.estLearners || 1}"></span></div>` },
+        { id: "users", label: "Teachers using tools", value: D.m ? Math.round(D.m.users) : NaN, sub: `of ${D.m ? fmt(D.m.useCompleted) : 0} trained · target ${pct(C.TARGETS.use8)}`, side: D.m ? ring(D.m.usePct, 64, 8, "Share of trained teachers using the tool") : "" },
+        { id: "led", label: "Fellows who led a full test", value: D.f.led, of: D.f.n, sub: "Guskey level 4: practice", mini: `<div class="mini-dots" aria-hidden="true">${D.f.rows.map(r => `<i class="${r.led_full_test === "Yes" ? "on" : ""}"></i>`).join("")}</div>` },
+        { id: "commit", label: "Event commitments kept", value: D.e.made ? D.e.followed / D.e.made * 100 : NaN, fmt: "pct", sub: `target ${pct(C.TARGETS.commitments)}`, mini: `<div class="mini-cols">${D.e.rows.map((r, i) => `<div class="mini-col"><span style="height:${Math.round(r.commitments_followed / r.commitments_made * 40)}px"></span>KSE ${i + 1}</div>`).join("")}</div>` },
+        { id: "cpa", label: "Cost per teacher using", value: D.m ? D.m.costPerActive : NaN, fmt: "kes", sub: `target ${kes(C.TARGETS.costPerActive)} or less`, mini: D.m ? `<div class="target-bar"><span style="width:${Math.min(100, D.m.costPerActive / 12000 * 100)}%"></span><i style="left:${C.TARGETS.costPerActive / 12000 * 100}%"></i></div>` : "" }],
+      cards: D => [DC.north(D, 7), DC.progress(D, 5), DC.funnel(D, 6), DC.cost(D, 6), DC.map(D, 6), stack(6, DC.heat(D, 12), DC.feedback(D, 12)), DC.waffle(D, 6), DC.guskey(D, 6), DC.teachers(D, 12), DC.decisions(D, 6), DC.activity(D, 6), DC.events(D, 6), DC.ladder(D, 6)] },
+    staff: { eyebrow: "Programme view", title: "This week across our programmes",
+      tiles: D => { const ret = state.submissions.filter(s => s.status === "returned").length, tc = sum(state.submissions.filter(s => s.dataset === "teacher_checkin" && s.term === CURRENT_TERM), s => s.rows.length), sup = D.f.status.filter(s => s[0] !== "On track").reduce((a, s) => a + s[1], 0);
+        return [
+          { id: "pend", label: "Awaiting review", value: D.t.pending, sub: "submissions with M&E" },
+          { id: "ret", label: "Returned to fix", value: ret, sub: ret ? "open the review page" : "nothing returned" },
+          { id: "tc", label: "Teacher check-ins", value: tc, sub: termLabel(CURRENT_TERM) },
+          { id: "sup", label: "Fellows needing support", value: sup, of: D.f.n, sub: "needs support or re-sprint" },
+          { id: "fb", label: "Feedback turnaround", value: D.f.fbNow ? +D.f.fbNow.median_days : NaN, fmt: "dec", sub: "days, median · target 5" }]; },
+      cards: D => [DC.todo(D, 6), DC.activity(D, 6), DC.teachers(D, 12), DC.waffle(D, 6), DC.guskey(D, 6), DC.map(D, 6), stack(6, DC.north(D, 12), DC.feedback(D, 12)), DC.events(D, 6), DC.ladder(D, 6)] },
+    me: { eyebrow: "Data trust view", title: "Is our data ready to share?",
+      tiles: D => { const q = pending(), oldest = q.length ? Math.max(...q.map(s => Math.round((Date.parse(today()) - Date.parse(s.submittedAt)) / 864e5))) : 0;
+        return [
+          { id: "ver", label: "Submissions verified", value: D.t.verified, of: D.t.total, sub: "only verified data counts", mini: `<div class="seg-bar"><span class="v" style="flex:${D.t.verified}"></span>${D.t.pending ? `<span class="w" style="flex:${D.t.pending}"></span>` : ""}${D.t.returned ? `<span class="r" style="flex:${D.t.returned}"></span>` : ""}</div>` },
+          { id: "pend", label: "Awaiting review", value: D.t.pending, sub: "target: within 3 days" },
+          { id: "old", label: "Oldest waiting", value: oldest, sub: "days" },
+          { id: "held", label: "Rows held back", value: D.t.held, sub: "out of the figures they affect" },
+          { id: "flag", label: "Rows flagged", value: D.t.flagged, sub: "counted, with a caution" }]; },
+      cards: D => [DC.queue(D, 7), DC.checks(D, 5), DC.held(D, 6), DC.fresh(D, 6), DC.activity(D, 5), DC.progress(D, 7)] },
+    teacher: { eyebrow: "My classroom", title: "Karibu, mwalimu. Here's what we're learning together.",
+      tiles: D => [
+        { id: "mine", label: "Your check-ins", value: state.myCheckins || 0, sub: "sent from this device" },
+        { id: "tc", label: "Teachers checking in", value: D.tr.n, sub: termLabel(D.tr.term || CURRENT_TERM) },
+        { id: "min", label: "Time saved, median", value: Math.round(D.tr.minutes || 0), sub: "minutes a week" },
+        { id: "recent", label: "Used the tool lately", value: D.tr.n ? D.tr.recent / D.tr.n * 100 : NaN, fmt: "pct", sub: "this week or last" }],
+      cards: D => [DC.hello(D, 12), DC.teacherKids(D, 7), DC.time(D, 5), DC.ideas(D, 6), DC.support(D, 6), DC.voice(D, 12)] },
+    partner: { eyebrow: "Partner view", title: "What our partnership is making possible",
+      tiles: D => [
+        { id: "learners", label: "Learners reached", value: D.learners, sub: `+ about ${fmt(D.estLearners)} through InnovatED (estimate)` },
+        { id: "users", label: "Teachers using tools", value: D.m ? Math.round(D.m.users) : NaN, sub: "eight weeks after training", side: D.m ? ring(D.m.usePct, 64, 8, "Share of trained teachers using the tool") : "" },
+        { id: "counties", label: "Counties", value: Object.keys(D.fp).length, sub: "with Metis activity" },
+        { id: "fellows", label: "Fellows", value: D.f.n, sub: "designing for the whole child" },
+        { id: "commit", label: "Event commitments kept", value: D.e.made ? D.e.followed / D.e.made * 100 : NaN, fmt: "pct", sub: "followed up within a term" }],
+      cards: D => [DC.north(D, 7), DC.progress(D, 5), DC.map(D, 6), stack(6, DC.teacherKids(D, 12), DC.voice(D, 12)), DC.events(D, 6), DC.ladder(D, 6), DC.report(D, 12)] }
+  };
 
-    /* Fellowship waffle */
-    const order = { "On track": 0, "Needs support": 1, "Re-sprint": 2 }, cls = { "On track": ["ok", "✓"], "Needs support": ["warn", "!"], "Re-sprint": ["bad", "↺"] };
-    const waffle = `<div class="wf" role="img" aria-label="${esc(f.status.map(s => `${s[1]} ${s[0]}`).join(", "))}">${[...f.rows].sort((a, b) => order[a.status] - order[b.status]).map(r => `<span class="wf-cell wf-${cls[r.status][0]}" tabindex="0" data-tip="${esc(`${r.fellow}: ${r.status}, ${r.org_type}, ${r.county}`)}">${cls[r.status][1]}</span>`).join("")}</div>
-      <div class="lg">${f.status.map(s => `<span class="lg-item"><span class="wf-key wf-${cls[s[0]][0]}">${cls[s[0]][1]}</span>${esc(s[0])} <strong>${s[1]}</strong></span>`).join("")}</div>`;
+  function viewOverview() {
+    const D = dashData(), R = ROLE_DASH[state.role] || ROLE_DASH.lead;
+    return `<header class="page-head dash-head"><div><div class="eyebrow">${R.eyebrow}</div><h1>${esc(R.title)}</h1></div>
+        ${D.t.pending && can.review() ? `<p class="note">${chip("wait", "Awaiting review")} ${D.t.pending} submission${D.t.pending > 1 ? "s" : ""} not counted yet · <a href="#/review">Review</a></p>` : ""}</header>
+      <div class="dash-kpis">${R.tiles(D).map(tile).join("")}</div>
+      <div class="dash">${R.cards(D).join("")}</div>`;
+  }
 
-    const guskey = staircase([
-      { label: "sessions feel relevant", short: "Reaction", value: f.relevant }, { label: "Milestone 2 met", short: "Learning", value: f.m2 },
-      { label: "sponsor actively supporting", short: "Support", value: f.sponsor }, { label: "led a full design test", short: "Use", value: f.led },
-      { label: "collecting learner evidence", short: "Learners", value: f.learner }], f.n);
-
-    const fb = f.feedback.length ? `<div class="bullet-wrap"><div class="bullet-big"><span>${f.fbNow.median_days}</span> days</div>${bullet(f.feedback, 5, 12)}</div><p class="small muted">Median days from a Fellow's facilitation to written feedback. The line marks the five-day target; arrows show earlier terms.</p>` : empty("No feedback data yet.");
-
-    /* Knowledge Sharing pictogram */
-    const per = 5;
-    const picto = e.rows.length ? `<div class="picto-wrap"><div class="picto">${e.groups.map(gp => { const v = sum(e.rows, r => +r[gp[0]]), full = Math.floor(v / per), part = v % per >= per / 2; return `<div class="picto-row" tabindex="0" data-tip="${esc(`${gp[1]}: ${v} people across ${e.rows.length} events`)}"><span class="picto-label">${esc(gp[1])}</span><span class="picto-dots">${"<i></i>".repeat(full)}${part ? '<i class="half"></i>' : ""}</span><span class="picto-n">${v}</span></div>`; }).join("")}<p class="small muted">Each dot is ${per} people.</p></div>
-      <div class="picto-side">${ring(e.followed / e.made, 96, 11, "Commitments followed up")}<div class="small">of ${e.made} commitments followed up within a term</div></div></div>` : empty("No verified event data yet.");
-
-    const pilots = [...tb.verified, ...(isDonor() ? [] : tb.pending)];
-    const voice = state.voices.filter(v => v.consent);
-    const spot = voice.length ? voice[new Date().getDate() % voice.length] : null;
-
-    const due = state.decisions.filter(isDue).length;
-    const tr = teacherReport();
-    const decide = isDonor() ? dcard(6, "About this view", "", `<p>You're seeing verified data only. Every figure has passed Metis's data checks and been reviewed by M&E.</p><a class="btn primary" href="#/donor">Open the donor report</a>`) :
-      isTeacher() ? dcard(6, "Your check-in", "", `<p>Tell us how the tools are working in your class. It takes two minutes, in English or Kiswahili, and no learner is ever named.</p><a class="btn primary" href="#/checkin">Send a check-in</a>`) :
-      dcard(6, "Needs a decision", "From rules agreed in advance", `${due ? `<a class="prompt-mini" href="#/decide"><span class="sev decide">Due</span>${due} recorded decision${due > 1 ? "s are" : " is"} due for another look</a>` : ""}${pr.list.slice(0, 4).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span>${esc(p.title)}</a>`).join("")}<a class="text-link more-link" href="#/decide">All prompts and the decision log</a>`);
-    const teacherCard = tr.n ? dcard(12, "What teachers report", `${tr.n} verified check-ins, ${termLabel(tr.term)}. Teachers' own accounts, read beside the head-teacher figures above.`, teacherPanel(tr), "#/programs/innovated") : "";
-
-    return `<header class="page-head dash-head"><div><div class="eyebrow">Impact dashboard · verified data</div><h1>Whole Child Learning at a glance</h1>
-        <p class="lede">Every figure comes from data that has passed checks and been verified by M&E. Hover over or tap any chart for detail.</p></div>
-        ${t.pending && can.review() ? `<p class="note">${chip("wait", "Awaiting review")} ${t.pending} submissions aren't counted yet. <a href="#/review">Review them</a></p>` : ""}</header>
-      ${stats}
-      <div class="dash">
-        ${ns ? `<section class="dcard span-7 ns-card"><div class="dcard-head"><h2>Are the children we reach thriving as whole people?</h2><a class="more" href="#/programs/schools">Details</a></div>
-          <p class="dsub">Share of observed lessons where each North Star outcome was clearly evident: ${ns.schools.length} schools, ${ns.lessons} lessons, ${termLabel(ns.term)}. Dashed line: ${ns.baseTerm ? termLabel(ns.baseTerm) : "first term"}.</p>${northStarSVG(ns)}</section>` : ""}
-        ${dcard(5, "How each outcome has moved", `The same ${matched.length} schools in every term, so the comparison is like for like.`, trend, "#/programs/schools")}
-        ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun + (m ? dataTable(["Delivery", "Registered", "Completed", "Using at 8 weeks"], [["Metis-led", m.metis], ["Partner-led", m.partner]].map(([n, a]) => [n, `100 (${fmt(a.useRegistered)} teachers)`, `${Math.round(a.useCompleted / a.useRegistered * 100)} (${fmt(a.useCompleted)})`, `${Math.round(a.per100)} (about ${fmt(a.users)})`])) : ""), "#/programs/innovated")}
-        ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` + dataTable(["Site", "County", "Delivered by", "Registered", "Using at 8 weeks", "KES per teacher using"], m.useI.map(x => [x.row.site, x.row.county, x.row.delivered_by, x.row.registered, x.row.using_pct + "%", fmt(x.row.cost_per_completer / (x.row.using_pct / 100))])) : empty("No verified InnovatED data yet."), "#/programs/innovated")}
-        ${dcard(6, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Select a shaded county for its profile.", countyMap(footprint()))}
-        ${dcard(6, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
-        ${dcard(4, "Fellowship cohort", `${f.n} Fellows by status, ${termLabel(f.term)}.`, waffle, "#/programs/fellowship")}
-        ${dcard(4, "From reaction to learners", "Guskey's five levels: Fellows reaching each one.", guskey, "#/programs/fellowship")}
-        ${dcard(4, "Feedback turnaround", "", fb, "#/programs/fellowship")}
-        ${dcard(6, "Who comes to Knowledge Sharing Events", `${fmt(e.attendees)} people across ${e.rows.length} events.`, picto, "#/programs/events")}
-        ${dcard(6, "EdTech evidence ladder", "Pilots move right only when the evidence is there. Dot size shows learners; the number is learners reached.", pilots.length ? ladderSVG(pilots) : empty("No pilots yet."), "#/programs/testbed")}
-        ${teacherCard}
-        ${decide}
-        ${spot ? dcard(6, "In their words", "", `<figure class="spot"><blockquote>${esc(spot.text)}</blockquote><figcaption>${esc(spot.role)} · ${esc(spot.county)} <span class="voice-tags">${spot.tags.map(tg => C.NORTH_STAR.find(n => n.key === tg)).filter(Boolean).map(o => `<span class="ns-dot" title="${o.name}">${o.letter}</span>`).join("")}</span></figcaption></figure>`, "#/voices") : ""}
-      </div>`;
+  /* Live touches: count-up numbers and a pulse on cards whose data changed since this tab last showed them. */
+  const lastSig = {};
+  function liveTouches(root) {
+    const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    root.querySelectorAll("[data-card]").forEach(el => {
+      const id = el.getAttribute("data-card"), sig = el.getAttribute("data-sig");
+      if (lastSig[id] != null && lastSig[id] !== sig) { el.classList.add("updated"); setTimeout(() => el.classList.remove("updated"), 4200); }
+      lastSig[id] = sig;
+    });
+    if (reduce) return;
+    root.querySelectorAll("[data-count]").forEach(el => {
+      const to = Number(el.getAttribute("data-count")), f = el.getAttribute("data-fmt") || "int";
+      if (!isFinite(to)) return;
+      const out = v => numOut(v, f);
+      const t0 = performance.now(), dur = 700;
+      const step = now => { const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3); el.textContent = out(to * e); if (k < 1) requestAnimationFrame(step); };
+      el.textContent = out(0); requestAnimationFrame(step);
+    });
   }
 
   function teacherPanel(tr) {
@@ -819,7 +965,7 @@
       <fieldset><legend>${tx("last")}</legend>${choice("last_used", C.LAST_USED, "radio")}</fieldset>
       <fieldset><legend>${tx("usedFor")} <span class="muted">(${tx("optional")})</span></legend>${choice("used_for", USES, "checkbox")}</fieldset>
       <label class="ci-narrow">${tx("minutes")} <span class="muted">(${tx("optional")})</span><input type="number" name="minutes_saved" min="0" max="900" inputmode="numeric"></label>
-      <fieldset><legend>${tx("outcomes")}</legend><div class="choices">${C.NORTH_STAR.map(o => `<label class="choice"><input type="checkbox" name="outcomes_seen" value="${o.key}"><span><span class="ns-dot">${o.letter}</span> ${lang === "sw" ? `${NS_SW[o.key]} (${o.name})` : o.name}</span></label>`).join("")}</div></fieldset>
+      <fieldset><legend>${tx("outcomes")}</legend><div class="choices">${C.NORTH_STAR.map(o => `<label class="choice"><input type="checkbox" name="outcomes_seen" value="${o.key}"><span>${nsKid(o.key)} ${lang === "sw" ? `${NS_SW[o.key]} (${o.name})` : o.name}</span></label>`).join("")}</div></fieldset>
       <label>${tx("worked")}<textarea name="what_worked" rows="2" maxlength="200"></textarea></label>
       <fieldset><legend>${tx("support")}</legend>${choice("support", C.SUPPORT, "radio")}</fieldset>
       <div class="form-actions"><button class="btn primary big" type="submit">${tx("send")}</button><span class="form-msg" id="ci-msg" role="status"></span></div>
@@ -847,7 +993,7 @@
       stage("i", "Iterate", "We tried something new. How do we evolve it?", `
         <div class="chain">${D.chain.map((c, i) => `<div class="chain-step"><div class="chain-k">${esc(c[0])}</div><p>${esc(c[1])}</p></div>${i < D.chain.length - 1 ? '<div class="chain-arrow" aria-hidden="true">→</div>' : ""}`).join("")}</div>
         <h3>North Star outcomes and CBE</h3>
-        <div class="table-wrap"><table><thead><tr><th>Outcome</th><th>What it looks like in class</th><th>CBE link</th></tr></thead><tbody>${C.NORTH_STAR.map(o => `<tr><th scope="row"><span class="ns-dot">${o.letter}</span> ${o.name}</th><td>${esc(o.looks)}</td><td>${esc(o.cbe)}</td></tr>`).join("")}</tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Outcome</th><th>What it looks like in class</th><th>CBE link</th></tr></thead><tbody>${C.NORTH_STAR.map(o => `<tr><th scope="row">${nsKid(o.key)} ${o.name}</th><td>${esc(o.looks)}</td><td>${esc(o.cbe)}</td></tr>`).join("")}</tbody></table></div>
         <h3 id="indicators">How each indicator is measured</h3>
         <div class="table-wrap"><table><thead><tr><th>Level</th><th>Indicator</th><th>Definition</th><th>Source</th><th>How often</th><th>Target</th></tr></thead><tbody>${D.indicators.map(r => `<tr><td>${esc(r[0])}</td><th scope="row">${esc(r[1])}</th><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td><td>${esc(r[5])}</td></tr>`).join("")}</tbody></table></div>`) +
       stage("s", "Share", "We share our learning. How do we support others?", `
@@ -856,7 +1002,9 @@
         <div class="table-wrap"><table><thead><tr><th>Lens</th><th>Requirement</th><th>How the portal meets it</th></tr></thead><tbody>${D.council.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div></section>
       <section class="card"><h2>Expert review, round two: gaps found and fixed</h2><p class="muted">After the first version went live, each lens reviewed it again. Every gap below is now built into the portal.</p>
         <div class="table-wrap"><table><thead><tr><th>Lens</th><th>Gap found</th><th>What changed</th></tr></thead><tbody>${D.review2.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div>
-        <h3>Still to come</h3><ul class="ticks">${D.next.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>`;
+        <h3>Still to come</h3><ul class="ticks">${D.next.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>
+      <section class="card"><h2>Expert review, round three: one portal, five experiences</h2><p class="muted">The third review asked a simpler question: does each person see what they need, at a glance, the moment data arrives?</p>
+        <div class="table-wrap"><table><thead><tr><th>Lens</th><th>What we saw</th><th>What changed</th></tr></thead><tbody>${D.review3.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div></section>`;
   }
 
   let voiceFilter = "all";
@@ -879,7 +1027,7 @@
       </section>` : "";
     return head("e · Empathize", "Voices", "What learners, teachers, caregivers and Fellows say, tagged by the North Star outcome it shows. Anonymous, and shared only with consent.") +
       `<div class="filter-row" role="group" aria-label="Filter by outcome">${filters.map(f => `<button class="pill${voiceFilter === f[0] ? " on" : ""}" data-action="voice-filter" data-v="${f[0]}" aria-pressed="${voiceFilter === f[0]}">${esc(f[1])}</button>`).join("")}</div>
-      <div class="voices">${list.map(v => `<figure class="voice card"><blockquote>${esc(v.text)}</blockquote><figcaption>${esc(v.role)} · ${esc(v.county)}<span class="voice-tags">${v.tags.map(t => C.NORTH_STAR.find(n => n.key === t)).filter(Boolean).map(o => `<span class="ns-dot" title="${o.name}">${o.letter}</span>`).join("")}</span></figcaption></figure>`).join("") || empty("No voices for this outcome yet.")}</div>${form}`;
+      <div class="voices">${list.map(v => `<figure class="voice card"><blockquote>${esc(v.text)}</blockquote><figcaption>${esc(v.role)} · ${esc(v.county)}<span class="voice-tags">${v.tags.map(t => C.NORTH_STAR.find(n => n.key === t)).filter(Boolean).map(o => nsKid(o.key, o.name)).join("")}</span></figcaption></figure>`).join("") || empty("No voices for this outcome yet.")}</div>${form}`;
   }
 
   function programTabs(cur) {
@@ -912,8 +1060,8 @@
           ${bars(f.feedback.map(r => ({ label: termLabel(r.period), value: +r.median_days, text: `${r.median_days} days`, cls: +r.median_days > 5 ? "warn-fill" : "", tip: `${termLabel(r.period)}: ${r.median_days} days median across ${r.feedback_items} pieces of feedback; ${r.against_standard_pct}% written against the standard` })), { max: 10, target: 5 })}
           <p class="small muted">The facilitation standard came in at the start of Term 3.</p></section>
       </div>
-      <section class="card"><h2>Fellows</h2><p class="muted">Coded, never named. ${f.over15} of ${f.n} spent more than 15 hours last month.</p>
-        <div class="fellow-grid">${f.rows.map(r => `<div class="fellow ${statusCls(r.status)}" tabindex="0" data-tip="${esc(`${r.fellow}: ${r.org_type}, ${r.county}. ${r.status}. ${r.hours} hours last month. Attendance ${r.attendance_pct}%.`)}"><span class="fellow-code">${esc(r.fellow)}</span><span class="fellow-status">${esc(r.status)}</span></div>`).join("")}</div></section>`;
+      ${isPartner() ? "" : `<section class="card"><h2>Fellows</h2><p class="muted">Coded, never named. ${f.over15} of ${f.n} spent more than 15 hours last month.</p>
+        <div class="fellow-grid">${f.rows.map(r => `<div class="fellow ${statusCls(r.status)}" tabindex="0" data-tip="${esc(`${r.fellow}: ${r.org_type}, ${r.county}. ${r.status}. ${r.hours} hours last month. Attendance ${r.attendance_pct}%.`)}"><span class="fellow-code">${esc(r.fellow)}</span><span class="fellow-status">${esc(r.status)}</span></div>`).join("")}</div></section>`}`;
   }
 
   function viewInnovated() {
@@ -930,7 +1078,7 @@
         ${kpi("Per learner reached (estimate)", kes(m.costPerActive / 45), "assumes a class of 45", "Cost per teacher using the tool divided by an average class of 45 learners. A rough guide, not a measured figure.")}
         ${isFinite(m.women) ? kpi("Women among completers", pct(m.women), `${m.womenSites} sites reporting`) : ""}</div>
       ${(() => { const tr = teacherReport(); return tr.n ? `<section class="card"><h2>What teachers tell us</h2><p class="muted">From teachers' own check-ins, ${termLabel(tr.term)}. Head teachers reported ${pct(m.usePct)} using the tool eight weeks after ${termLabel(m.term)} training; ${pct(tr.recent / tr.n)} of teachers checking in this term say they used it in the last two weeks. Different groups and terms, so read them side by side, not as a trend.</p>${teacherPanel(tr)}${can.add() || isTeacher() ? `<p><a class="btn" href="#/checkin">Send a teacher check-in</a></p>` : ""}</section>` : ""; })()}
-      <section class="card"><h2>Metis-led and partner-led delivery</h2>
+      ${isPartner() ? "" : `<section class="card"><h2>Metis-led and partner-led delivery</h2>
         <div class="table-wrap"><table class="num"><thead><tr><th></th><th>Completion</th><th>Using at 8 weeks</th><th>Using, per 100 registered</th><th>Per teacher completed</th><th>Per teacher using</th></tr></thead><tbody>
           ${cmpRow("Metis-led, all sites", m.metis)}${cmpRow("Partner-led, all sites", m.partner)}
           ${m.sameCounties.length ? cmpRow(`Metis-led, ${m.sameCounties.join(" and ")}`, m.metisSame) + cmpRow(`Partner-led, ${m.sameCounties.join(" and ")}`, m.partnerSame) : ""}
@@ -939,14 +1087,14 @@
       <section class="card"><h2>Cost per teacher completed, and per teacher actually using the tool</h2>
         <p class="legend"><span class="key s-metis"></span>Metis-led <span class="key s-partner"></span>Partner-led <span class="key hollow-key"></span>per teacher completed <span class="key solid-key"></span>per teacher using the tool (KES)</p>
         ${dumbbellSVG(m.useI)}
-        <p class="small muted">Sites held back by data checks aren't shown. ${m.heldBack.map(x => `Site ${x.row.site}`).join(", ")}: see the table below.</p></section>
+        <p class="small muted">Sites held back by data checks aren't shown. ${m.heldBack.map(x => `Site ${x.row.site}`).join(", ")}: see the table below.</p></section>`}
       <div class="two-col">
         <section class="card"><h2>Use at 8 weeks by county</h2>${bars(byCounty, { max: 100 })}</section>
         <section class="card"><h2>What the confidence score tells us</h2><p>Confidence on the last day sits between ${Math.min(...m.base.filter(x => +x.row.registered >= 10).map(x => +x.row.confidence))} and ${Math.max(...m.base.filter(x => +x.row.registered >= 10).map(x => +x.row.confidence))} at every site with ten or more teachers, while use at eight weeks ranges from ${Math.min(...m.useI.map(x => +x.row.using_pct))}% to ${Math.max(...m.useI.filter(x => +x.row.registered >= 10).map(x => +x.row.using_pct))}%. Teachers leave feeling ready; the drop happens in the weeks after. That's why the portal tracks use at eight weeks, not confidence.</p></section>
       </div>
-      <section class="card"><h2>Sites</h2><div class="table-wrap"><table class="num"><thead><tr><th>Site</th><th>County</th><th>Delivered by</th><th>Registered</th><th>Completed</th><th>Completion</th><th>Confidence</th><th>Using at 8 wks</th><th>Per completer</th><th>Checks</th></tr></thead><tbody>
+      ${isPartner() ? "" : `<section class="card"><h2>Sites</h2><div class="table-wrap"><table class="num"><thead><tr><th>Site</th><th>County</th><th>Delivered by</th><th>Registered</th><th>Completed</th><th>Completion</th><th>Confidence</th><th>Using at 8 wks</th><th>Per completer</th><th>Checks</th></tr></thead><tbody>
         ${m.items.map(x => { const r = x.row, cl = checkLabel(x.res); return `<tr><th scope="row">${esc(r.site)}</th><td>${esc(r.county)}</td><td>${esc(r.delivered_by)}</td><td>${r.registered}</td><td>${r.completed}</td><td>${r.registered ? pct(r.completed / r.registered) : "n/a"}</td><td>${r.confidence}</td><td>${r.using_pct === "" ? "not recorded" : r.using_pct + "%"}</td><td>${fmt(r.cost_per_completer)}</td><td>${chip(cl.cls, cl.text, x.res.issues.map(i => i.msg).join(". ") || "All checks passed")}</td></tr>`; }).join("")}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>`}`;
   }
 
   function viewSchools() {
@@ -969,8 +1117,8 @@
         ${ns ? kpi("Lowest outcome", [...ns.values].sort((a, b) => a.value - b.value)[0].name, `next term's coaching focus · agency target ${C.TARGETS.agency}% by Term 3, 2027`) : ""}
         ${(() => { const sm = schoolMeeting(); return sm ? kpi("Meeting or exceeding expectations", Math.round(sm.value) + "%", `CBE school-based assessment, ${sm.n} schools · target ${C.TARGETS.meeting}%`) : ""; })()}</div>
       <section class="card"><h2>North Star by school</h2><p class="muted">Share of observed lessons where each outcome was clearly evident. Latest verified term for each school.</p>
-        <div class="table-wrap"><table class="heat"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th><span class="ns-dot">${o.letter}</span> ${o.name}</th>`).join("")}<th>Stage</th></tr></thead><tbody>
-        ${latestBySchool.map(({ s, found, waiting }) => `<tr><th scope="row"><div>${esc(s.label)}</div><div class="small muted">${esc(s.type)}, ${esc(s.county)} · ${found ? termLabel(found.term) : "no data"}</div>${waiting && !isDonor() ? chip("wait", "New term awaiting review") : ""}</th>
+        <div class="table-wrap"><table class="heat"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th>${nsKid(o.key)} ${o.name}</th>`).join("")}<th>Stage</th></tr></thead><tbody>
+        ${latestBySchool.map(({ s, found, waiting }) => `<tr><th scope="row"><div>${esc(s.label)}</div><div class="small muted">${esc(s.type)}, ${esc(s.county)} · ${found ? termLabel(found.term) : "no data"}</div>${waiting && can.review() ? chip("wait", "New term awaiting review") : ""}</th>
           ${C.NORTH_STAR.map(o => { const v = found ? +found.row[o.key + "_pct"] : NaN; return `<td class="cell" style="background:${isFinite(v) ? heatColor(v) : "transparent"};color:var(--navy)" data-tip="${esc(`${s.label}, ${o.name}: ${isFinite(v) ? v + "%" : "no data"}${found ? ` of ${found.row.lessons_observed} lessons, ${termLabel(found.term)}` : ""}`)}" tabindex="0">${isFinite(v) ? v + "%" : "n/a"}</td>`; }).join("")}
           <td><span class="stage-chip">${esc(s.stage)}</span></td></tr>`).join("")}
         </tbody></table></div></section>
@@ -988,7 +1136,7 @@
       <p class="small muted">${fmt(p.schools)} schools · ${fmt(p.learners)} learners · Evidence: ${esc(p.evidence)}</p></article>`; };
     return programTabs("testbed") + head("t · Tackle", "Kenya EdTech Testbed", "Products move up the evidence ladder only when the evidence is there. Self-report is a start, not a result.") +
       `<div class="kpis">${kpi("Verified pilots", tb.verified.length, `${tb.pending.length} awaiting review`)}${kpi("Learners in tested products", fmt(tb.learners), "verified pilots")}${kpi("Comparison-group evidence", tb.strong.length, "pilots")}</div>
-      <div class="pilots">${tb.verified.map(card).join("")}${isDonor() ? "" : tb.pending.map(card).join("")}</div>`;
+      <div class="pilots">${tb.verified.map(card).join("")}${isPartner() ? "" : tb.pending.map(card).join("")}</div>`;
   }
 
   function viewEvents() {
@@ -1092,7 +1240,7 @@
     const subs = state.submissions.filter(s => reviewFilter === "all" || s.status === reviewFilter)
       .sort((a, b) => (a.status === "submitted" ? -1 : 0) - (b.status === "submitted" ? -1 : 0) || (b.submittedAt || "").localeCompare(a.submittedAt || ""));
     const filters = [["all", "All"], ["submitted", "Awaiting review"], ["verified", "Verified"], ["returned", "Returned"]];
-    return head("i · Iterate", "Review and trust", "Every submission is checked automatically. M&E then verifies it, or returns it with a note. Only verified data reaches the dashboard and the donor report.") +
+    return head("i · Iterate", "Review and trust", "Every submission is checked automatically. M&E then verifies it, or returns it with a note. Only verified data reaches the dashboards and the partner report.") +
       `<div class="kpis">${kpi("Verified", `${t.verified}<small>/${t.total}</small>`, "submissions")}${kpi("Awaiting review", t.pending, "")}${kpi("Rows held back", t.held, "by failing checks")}${kpi("Rows flagged", t.flagged, "counted, with a caution")}</div>
       ${can.verify() ? "" : `<p class="alert info">You're viewing as ${esc(roleOf().label)}. Switch to M&E (top right) to verify or return submissions.</p>`}
       <div class="filter-row" role="group" aria-label="Filter submissions">${filters.map(f => `<button class="pill${reviewFilter === f[0] ? " on" : ""}" data-action="review-filter" data-v="${f[0]}" aria-pressed="${reviewFilter === f[0]}">${f[1]}</button>`).join("")}</div>
@@ -1130,19 +1278,19 @@
       </tbody></table></div></section>`;
   }
 
-  /* ----- donor report ----- */
-  function viewDonor() {
-    const ns = northStarNow(), s = donorSentences(), t = trust();
+  /* ----- partner report ----- */
+  function viewReport() {
+    const ns = northStarNow(), s = partnerSentences(), t = trust();
     const voices = state.voices.filter(v => v.consent).slice(0, 4);
-    return `<div class="donor">
-      <header class="page-head donor-head"><div><div class="eyebrow">s · Share · Prepared for funders and partners</div><h1>Whole Child Learning impact report</h1>
+    return `<div class="partner-report">
+      <header class="page-head report-head"><div><div class="eyebrow">s · Share · Prepared for our partners</div><h1>Whole Child Learning impact report</h1>
         <p class="lede">Built only from verified data, as of ${prettyDate(today())}. Every statement carries its source and sample size.</p></div>
-        <div class="donor-actions no-print"><button class="btn primary" data-action="print">Print or save as PDF</button><button class="btn" data-action="csv-figures">Download verified figures (CSV)</button></div></header>
-      ${ns ? `<section class="card"><h2>Are the children we reach thriving as whole people?</h2><p class="muted">Share of observed lessons where each North Star outcome was clearly evident, ${termLabel(ns.term)}.</p>${northStarSVG(ns)}</section>` : ""}
+        <div class="report-actions no-print"><button class="btn primary" data-action="print">Print or save as PDF</button><button class="btn" data-action="csv-figures">Download verified figures (CSV)</button></div></header>
+      ${ns ? `<section class="card kid-card"><h2>How whole are the children we reach?</h2><p class="dmeta">${termLabel(ns.term)} · ${ns.schools.length} schools · ${ns.lessons} lessons observed</p>${nsKids(ns)}${capLine(CAP.north)}</section>` : ""}
       <section class="card"><h2>What we can say with confidence</h2>
         <div class="sentences">${s.map(x => `<div class="sentence"><div class="eyebrow">${esc(x.program)}</div><p>${esc(x.text)}</p><p class="small muted">${esc(x.source)} · ${esc(x.n)}</p><button class="text-link as-btn no-print" data-action="copy" data-text="${esc(x.text)}">Copy sentence</button></div>`).join("")}</div></section>
       ${(() => { const learn = prompts().list.filter(p => p.learn).map(p => p.learn); return learn.length ? `<section class="card"><h2>What we're learning</h2><p class="muted">Where results are weaker than we want, and what we're doing about it.</p><ul class="ticks">${learn.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""; })()}
-      <section class="card"><h2>In their words</h2><div class="voices donor-voices">${voices.map(v => `<figure class="voice"><blockquote>${esc(v.text)}</blockquote><figcaption>${esc(v.role)} · ${esc(v.county)}</figcaption></figure>`).join("")}</div></section>
+      <section class="card"><h2>In their words</h2><div class="voices report-voices">${voices.map(v => `<figure class="voice"><blockquote>${esc(v.text)}</blockquote><figcaption>${esc(v.role)} · ${esc(v.county)}<span class="voice-tags">${v.tags.filter(tg => NS_COLOR[tg]).map(tg => nsKid(tg, C.NORTH_STAR.find(n => n.key === tg).name)).join("")}</span></figcaption></figure>`).join("")}</div>${capLine(CAP.voice)}</section>
       <section class="card"><h2>How we know</h2><ul class="ticks">
         <li>Figures come only from submissions verified by M&E: ${t.verified} of ${t.total} so far. Anything awaiting review is left out.</li>
         <li>Rows that fail checks (for example more completers than registrants, or impossible percentages) are held back from the figures they affect.</li>
@@ -1153,16 +1301,20 @@
   }
 
   /* ---------- shell ---------- */
+  const INTERNAL = ["staff", "me", "lead"];
   const NAV = [
     { route: "overview", label: "Dashboard" },
-    { stage: "m", name: "Make meaning" }, { route: "design", label: "Design map" },
+    { stage: "m", name: "Make meaning", hide: ["teacher"] }, { route: "design", label: "Design map", hide: ["teacher"] },
     { stage: "e", name: "Empathize" }, { route: "voices", label: "Voices" },
-    { stage: "t", name: "Tackle" }, ...C.PROGRAMS.map(p => ({ route: "programs/" + p.id, label: p.name, sub: true })),
-    { stage: "i", name: "Iterate", noDonor: true }, { route: "checkin", label: "Teacher check-in", noDonor: true }, { route: "add", label: "Add data", internal: true }, { route: "review", label: "Review and trust", internal: true, badge: () => pending().length }, { route: "decide", label: "Pause and adapt", internal: true, badge: () => prompts().list.filter(p => p.sev === "decide").length },
-    { stage: "s", name: "Share" }, { route: "donor", label: "Donor report" }
+    { stage: "t", name: "Tackle", hide: ["teacher"] }, ...C.PROGRAMS.map(p => ({ route: "programs/" + p.id, label: p.name, sub: true, hide: ["teacher"] })),
+    { stage: "i", name: "Iterate", hide: ["partner"] }, { route: "checkin", label: "Teacher check-in", hide: ["partner"] },
+    { route: "add", label: "Add data", only: INTERNAL }, { route: "review", label: "Review and trust", only: INTERNAL, badge: () => pending().length }, { route: "decide", label: "Pause and adapt", only: INTERNAL, badge: () => prompts().list.filter(p => p.sev === "decide").length },
+    { stage: "s", name: "Share", hide: ["teacher"] }, { route: "report", label: "Partner report", hide: ["teacher"] }
   ];
+  const shows = n => !(n.hide && n.hide.includes(state.role)) && !(n.only && !n.only.includes(state.role));
+  const BLOCKED = { partner: ["add", "review", "decide", "checkin"], teacher: ["add", "review", "decide"] };
   function renderNav(cur) {
-    $("#nav").innerHTML = NAV.filter(n => !(n.internal && (isDonor() || isTeacher())) && !(n.noDonor && isDonor())).map(n => {
+    $("#nav").innerHTML = NAV.filter(shows).map(n => {
       if (n.stage) return `<div class="nav-stage"><span class="nav-letter">${n.stage}</span>${n.name}</div>`;
       const on = cur === n.route || (n.route === "programs/fellowship" && cur === "programs");
       const b = n.badge ? n.badge() : 0;
@@ -1173,18 +1325,20 @@
     $("#role").setAttribute("data-tip", roleOf().hint);
     document.body.dataset.role = state.role;
   }
-  const VIEWS = { overview: viewOverview, design: viewDesign, voices: viewVoices, checkin: viewCheckin, add: viewAdd, review: viewReview, decide: viewDecide, donor: viewDonor };
+  const VIEWS = { overview: viewOverview, design: viewDesign, voices: viewVoices, checkin: viewCheckin, add: viewAdd, review: viewReview, decide: viewDecide, report: viewReport };
   const PROGRAM_VIEWS = { fellowship: viewFellowship, innovated: viewInnovated, schools: viewSchools, testbed: viewTestbed, events: viewEvents };
   function route() {
     let h = location.hash.replace(/^#\/?/, "") || "overview";
     let [page, sub] = h.split("/");
-    if ((isDonor() && ["add", "review", "decide", "checkin"].includes(page)) || (isTeacher() && ["add", "review", "decide"].includes(page))) { location.hash = "#/overview"; return; }
+    if (page === "donor") { location.hash = "#/report"; return; }
+    if ((BLOCKED[state.role] || []).includes(page)) { location.hash = "#/overview"; return; }
     let html;
     if (page === "programs") { sub = PROGRAM_VIEWS[sub] ? sub : "fellowship"; html = PROGRAM_VIEWS[sub](); h = "programs/" + sub; }
     else html = (VIEWS[page] || viewOverview)();
     renderNav(h);
     const main = $("#view");
     main.innerHTML = html;
+    liveTouches(main);
     main.focus({ preventScroll: true });
     document.title = (main.querySelector("h1") ? main.querySelector("h1").textContent + " · " : "") + "Metis Whole Child Impact Portal";
     document.body.classList.remove("nav-open");
@@ -1280,6 +1434,8 @@
     else if (act === "mark-reviewed") { const d = state.decisions.find(x => x.id === a.dataset.id); if (d) { d.reviewedOn = today(); save(); rerender(); toast("Marked as reviewed"); } }
     else if (act === "lang") { lang = a.dataset.v === "sw" ? "sw" : "en"; rerender(); }
     else if (act === "checkin-again") { lastCheckin = null; rerender(); }
+    else if (act === "go") location.hash = a.dataset.to;
+    else if (act === "open-review") { openSubs.add(a.dataset.id); reviewFilter = "submitted"; location.hash = "#/review"; }
     else if (act === "county") {
       const card = a.closest(".dcard") || document, box = card.querySelector(".county-detail");
       card.querySelectorAll(".cty-shape.sel").forEach(x => x.classList.remove("sel"));
@@ -1315,6 +1471,8 @@
       }
       sub.rows.push(row);
       logEvent(sub, "Check-in added", roleOf().label);
+      state.myCheckins = (state.myCheckins || 0) + 1;
+      state.myLastCheckin = today();
       lastCheckin = `${row.school} · ${opt(row.grade_band)} · ${opt(row.last_used)}${res.issues.length ? ` · ${res.issues.map(i => i.msg).join(". ")}` : ""}`;
       save(); rerender(); toast(lang === "sw" ? "Ripoti imetumwa" : "Check-in sent");
     }
@@ -1342,7 +1500,7 @@
     if (e.target.id === "import-input" && e.target.files[0]) {
       const r = new FileReader();
       r.onload = () => {
-        try { const p = JSON.parse(String(r.result)); if (!p || !Array.isArray(p.submissions) || !Array.isArray(p.voices)) throw new Error("shape"); p.submissions = p.submissions.filter(x => x && C.DATASETS[x.dataset] && Array.isArray(x.rows)); p.voices = p.voices.filter(v => v && typeof v.text === "string").map(v => ({ ...v, tags: Array.isArray(v.tags) ? v.tags : [] })); p.role = C.ROLES.some(r => r.id === p.role) ? p.role : "staff"; p.version = C.version; p.decisions = p.decisions || []; state = p; save(); route(); toast("Data imported"); }
+        try { const p = JSON.parse(String(r.result)); if (!p || !Array.isArray(p.submissions) || !Array.isArray(p.voices)) throw new Error("shape"); p.submissions = p.submissions.filter(x => x && C.DATASETS[x.dataset] && Array.isArray(x.rows)); p.voices = p.voices.filter(v => v && typeof v.text === "string").map(v => ({ ...v, tags: Array.isArray(v.tags) ? v.tags : [] })); if (p.role === "donor") p.role = "partner"; p.role = C.ROLES.some(r => r.id === p.role) ? p.role : "staff"; p.version = C.version; p.decisions = p.decisions || []; state = p; save(); route(); toast("Data imported"); }
         catch (err) { toast("That file isn't a portal export. Nothing was changed"); }
         e.target.value = "";
       };
@@ -1357,7 +1515,32 @@
     }
   });
 
+  /* ---------- live: the badge, and data saved in another tab ---------- */
+  function liveStamp() {
+    const el = $("#live-text");
+    if (!el) return;
+    const at = state.updatedAt ? Date.parse(state.updatedAt) : NaN;
+    const mins = isFinite(at) ? Math.floor((Date.now() - at) / 60000) : NaN;
+    el.textContent = !isFinite(mins) ? "Live · sample data" : mins < 1 ? "Live · updated just now" : mins < 60 ? `Live · updated ${mins} min ago` : `Live · updated ${prettyDate(state.updatedAt.slice(0, 10))}`;
+  }
+  function flashLive() { const b = $("#live"); if (!b) return; b.classList.add("flash"); clearTimeout(flashLive.t); flashLive.t = setTimeout(() => b.classList.remove("flash"), 2600); }
+  window.addEventListener("storage", e => {
+    if (e.key !== STORE) return;
+    const p = load();
+    if (!p) return;
+    const changed = sigOf(p) !== sigOf(state), role = state.role;
+    state = p; state.role = role; dataSig = sigOf(state);
+    liveStamp();
+    if (!changed) return;
+    flashLive();
+    const page = (location.hash.replace(/^#\/?/, "") || "overview").split("/")[0];
+    if (["checkin", "add"].includes(page)) toast("New data just came in. Open the dashboard to see it");
+    else { rerender(); toast("New data just came in. The dashboard has updated"); }
+  });
+  setInterval(liveStamp, 30000);
+
   window.addEventListener("hashchange", route);
   $("#role").innerHTML = C.ROLES.map(r => `<option value="${r.id}">${esc(r.label)}</option>`).join("");
+  liveStamp();
   route();
 })();
