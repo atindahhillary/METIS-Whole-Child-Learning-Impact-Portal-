@@ -24,7 +24,7 @@
   --wait: #2b5672; --wait-bg: #e8eef6;
   --ns-track: #e3f3f5;
   --ns-fill: #1699a8;
-  --map-off: #e6eaee;
+  --map-off: #eef1f4;
   --radius: 16px;
   --display: "Poppins", "Segoe UI", system-ui, sans-serif;
   --body: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
@@ -392,10 +392,12 @@ label.check { display: inline-flex; align-items: center; gap: 8px; font-weight: 
 .chart .bub { stroke: #fff; stroke-width: 2; fill-opacity: 0.9; }
 .chart .bub-g:hover .bub, .chart .bub-g:focus .bub { fill-opacity: 1; stroke: var(--navy); }
 .chart .bub-lab { font: 700 12px var(--body); fill: var(--ink); }
-.chart.map { max-width: 390px; margin: 0 auto; }
-.chart .cty-shape { stroke: #fff; stroke-width: 0.9; stroke-linejoin: round; outline: none; transition: filter 0.15s; }
-.chart .cty-shape.on:hover, .chart .cty-shape.on:focus { filter: brightness(0.88); stroke: var(--navy); stroke-width: 1.6; }
-.chart .cty-shape:not(.on):hover { filter: brightness(0.96); }
+.chart.map { max-width: 470px; margin: 0 auto; }
+.chart .cty-shape { stroke: #8a99a8; stroke-width: 0.8; stroke-linejoin: round; vector-effect: non-scaling-stroke; outline: none; transition: filter 0.15s; }
+.chart .cty-shape.on { stroke: #fff; stroke-width: 1.2; }
+.chart .cty-shape.on:hover, .chart .cty-shape.on:focus { filter: brightness(0.88); stroke: var(--navy); stroke-width: 2; }
+.chart .cty-shape:not(.on):hover { fill: #dfe5eb !important; stroke: var(--slate); stroke-width: 1.2; }
+.chart .ken-outline { fill: none; stroke: var(--navy); stroke-width: 1.6; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: none; }
 .chart .map-lab { font: 650 11.5px var(--body); fill: var(--ink); paint-order: stroke; stroke: #fff; stroke-width: 3px; stroke-linejoin: round; pointer-events: none; }
 .chart .map-leader { stroke: var(--navy); stroke-width: 1; }
 .chart .map-pin { fill: var(--navy); stroke: #fff; stroke-width: 1; }

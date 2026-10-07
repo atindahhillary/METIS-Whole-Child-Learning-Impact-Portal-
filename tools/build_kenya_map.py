@@ -1,35 +1,45 @@
-"""Build assets/js/kenya-map.js from geoBoundaries Kenya ADM1 (counties).
+"""Build assets/js/kenya-map.js from geoBoundaries Kenya boundaries.
 
-Source: https://www.geoboundaries.org (gbOpen KEN ADM1, RCMRD GeoPortal, public domain).
-Usage: python tools/build_kenya_map.py path/to/geoBoundaries-KEN-ADM1_simplified.geojson
+Source: https://www.geoboundaries.org (gbOpen KEN ADM1 counties and ADM0 national border,
+RCMRD GeoPortal, public domain). Use the full-detail files for crisp county lines.
+
+Usage:
+  python tools/build_kenya_map.py geoBoundaries-KEN-ADM1.geojson geoBoundaries-KEN-ADM0.geojson
 """
 import json
 import math
 import sys
 
-W = 400            # SVG width in map units
-PAD = 6            # padding around the country
-TOL = 0.45         # simplification tolerance in map units
+W = 480            # SVG width in map units
+PAD = 8            # padding around the country
+TOL = 0.22         # simplification tolerance in map units (sub-pixel at display size)
 RENAME = {"Taita Taveta": "Taita-Taveta", "Tharaka": "Tharaka-Nithi"}
 
 
 def rdp(points, tol):
-    """Ramer-Douglas-Peucker line simplification."""
-    if len(points) < 3:
+    """Ramer-Douglas-Peucker, iterative so long coastlines don't hit the recursion limit."""
+    n = len(points)
+    if n < 3:
         return points
-    (x1, y1), (x2, y2) = points[0], points[-1]
-    dx, dy = x2 - x1, y2 - y1
-    norm = math.hypot(dx, dy) or 1e-12
-    best_i, best_d = 0, -1.0
-    for i in range(1, len(points) - 1):
-        x, y = points[i]
-        d = abs(dy * x - dx * y + x2 * y1 - y2 * x1) / norm
-        if d > best_d:
-            best_i, best_d = i, d
-    if best_d > tol:
-        left = rdp(points[: best_i + 1], tol)
-        return left[:-1] + rdp(points[best_i:], tol)
-    return [points[0], points[-1]]
+    keep = [False] * n
+    keep[0] = keep[-1] = True
+    stack = [(0, n - 1)]
+    while stack:
+        a, b = stack.pop()
+        (x1, y1), (x2, y2) = points[a], points[b]
+        dx, dy = x2 - x1, y2 - y1
+        norm = math.hypot(dx, dy) or 1e-12
+        best_i, best_d = -1, -1.0
+        for i in range(a + 1, b):
+            x, y = points[i]
+            d = abs(dy * x - dx * y + x2 * y1 - y2 * x1) / norm
+            if d > best_d:
+                best_i, best_d = i, d
+        if best_i > 0 and best_d > tol:
+            keep[best_i] = True
+            stack.append((a, best_i))
+            stack.append((best_i, b))
+    return [p for p, k in zip(points, keep) if k]
 
 
 def rdp_ring(ring, tol):
@@ -55,45 +65,56 @@ def ring_area_centroid(ring):
     return a, cx / (6 * a), cy / (6 * a)
 
 
-def main(path):
+def polygons(path):
     data = json.load(open(path, encoding="utf-8"))
-    polys = []
+    out = []
     for f in data["features"]:
         g = f["geometry"]
         parts = g["coordinates"] if g["type"] == "MultiPolygon" else [g["coordinates"]]
-        polys.append((f["properties"]["shapeName"], parts))
+        out.append((f["properties"].get("shapeName", ""), parts))
+    return out
 
-    lons = [p[0] for _, parts in polys for poly in parts for ring in poly for p in ring]
-    lats = [p[1] for _, parts in polys for poly in parts for ring in poly for p in ring]
+
+def to_path(parts, proj, counter):
+    d, best = [], (0.0, 0.0, 0.0)
+    for poly in parts:
+        for ri, ring in enumerate(poly):
+            simp = rdp_ring([proj(lon, lat) for lon, lat in ring], TOL)
+            if len(simp) < 4:
+                continue
+            counter[0] += len(simp)
+            d.append("M" + "L".join(f"{x:.1f},{y:.1f}" for x, y in simp[:-1]) + "Z")
+            if ri == 0:
+                a, cx, cy = ring_area_centroid(simp[:-1])
+                if abs(a) > abs(best[0]):
+                    best = (a, cx, cy)
+    return "".join(d), best
+
+
+def main(adm1_path, adm0_path=None):
+    counties = polygons(adm1_path)
+    country = polygons(adm0_path) if adm0_path else None
+    ref = country or counties
+    lons = [p[0] for _, parts in ref for poly in parts for ring in poly for p in ring]
+    lats = [p[1] for _, parts in ref for poly in parts for ring in poly for p in ring]
     lon0, lon1, lat0, lat1 = min(lons), max(lons), min(lats), max(lats)
     scale = (W - 2 * PAD) / (lon1 - lon0)  # near the equator, degrees of lat and lon are close enough
     H = round((lat1 - lat0) * scale + 2 * PAD)
     proj = lambda lon, lat: (PAD + (lon - lon0) * scale, PAD + (lat1 - lat) * scale)
 
-    out, total = {}, 0
-    for name, parts in polys:
-        name = RENAME.get(name, name)
-        d, best = [], (0.0, 0.0, 0.0)
-        for poly in parts:
-            for ri, ring in enumerate(poly):
-                pts = [proj(lon, lat) for lon, lat in ring]
-                simp = rdp_ring(pts, TOL)
-                if len(simp) < 4:
-                    continue
-                total += len(simp)
-                d.append("M" + "L".join(f"{x:.1f},{y:.1f}" for x, y in simp[:-1]) + "Z")
-                if ri == 0:
-                    a, cx, cy = ring_area_centroid(simp[:-1])
-                    if abs(a) > abs(best[0]):
-                        best = (a, cx, cy)
-        out[name] = {"d": "".join(d), "cx": round(best[1], 1), "cy": round(best[2], 1)}
+    counter, out = [0], {}
+    for name, parts in counties:
+        d, best = to_path(parts, proj, counter)
+        out[RENAME.get(name, name)] = {"d": d, "cx": round(best[1], 1), "cy": round(best[2], 1)}
+    outline = to_path(country[0][1], proj, counter)[0] if country else ""
 
-    js = ("/* Kenya counties (47). Boundaries: geoBoundaries gbOpen KEN ADM1, RCMRD GeoPortal, public domain.\n"
-          "   Generated by tools/build_kenya_map.py. */\n"
-          f"window.KENYA_MAP = {json.dumps({'w': W, 'h': H, 'source': 'geoBoundaries (RCMRD), public domain', 'counties': out}, separators=(',', ':'))};\n")
+    payload = {"w": W, "h": H, "source": "geoBoundaries (RCMRD), public domain", "outline": outline, "counties": out}
+    js = ("/* Kenya: 47 counties and the national border. Boundaries: geoBoundaries gbOpen KEN ADM1 and ADM0,\n"
+          "   RCMRD GeoPortal, public domain. Generated by tools/build_kenya_map.py. */\n"
+          f"window.KENYA_MAP = {json.dumps(payload, separators=(',', ':'))};\n")
     open("assets/js/kenya-map.js", "w", encoding="utf-8").write(js)
-    print(f"{len(out)} counties, {total} points, {len(js) / 1024:.1f} KB, {W}x{H}")
+    print(f"{len(out)} counties, {counter[0]} points, {len(js) / 1024:.1f} KB, {W}x{H}")
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(*sys.argv[1:3])

@@ -68,7 +68,7 @@ index.html                  App shell
 assets/css/portal.css       Styles (Metis teal, navy, orange; Poppins and Inter)
 assets/js/data.js           Programme config, dataset schemas, sample data, design map
 assets/js/app.js            Checks, metrics, decision prompts, views
-assets/js/kenya-map.js      Kenya's 47 county outlines as SVG paths (generated)
+assets/js/kenya-map.js      Kenya's 47 county outlines and national border as SVG paths (generated)
 tools/build_kenya_map.py    Rebuilds kenya-map.js from geoBoundaries data
 assets/img/                 Logo and icon
 templates/                  CSV templates for each dataset
@@ -77,4 +77,4 @@ docs/DESIGN-THINKING-MAP.md The design thinking map
 
 ## Sources
 
-The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation; Kenya Data Protection Act (2019). County boundaries: geoBoundaries gbOpen KEN ADM1 (RCMRD GeoPortal), public domain.
+The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation; Kenya Data Protection Act (2019). County and national boundaries: geoBoundaries gbOpen KEN ADM1 and ADM0 (RCMRD GeoPortal), public domain.

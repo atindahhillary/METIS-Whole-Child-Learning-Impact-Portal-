@@ -402,7 +402,7 @@
   /* ---------- views ---------- */
   /* ---------- dashboard (landing page) ---------- */
   /* Label nudges for small or crowded counties: [dx, dy, anchor, leader line] */
-  const MAP_LABEL = { "Nairobi": [-58, 22, "end", true], "Kiambu": [-4, -9, "middle"], "Kajiado": [0, 6, "middle"], "Kisumu": [-6, -12, "middle"], "Machakos": [24, 3, "middle"] };
+  const MAP_LABEL = { "Nairobi": [-72, 28, "end", true], "Kiambu": [-6, -12, "middle"], "Kajiado": [0, 8, "middle"], "Kisumu": [-8, -15, "middle"], "Machakos": [30, 4, "middle"] };
   const MAP_BINS = [[1000, "1,000 or more", "#13808d"], [100, "100 to 999", "#6dbcc6"], [1, "Under 100", "#c6e6ea"]];
   /* Colours assigned by where each line sits, so neighbouring lines always differ clearly. */
   const NS_COLOR = { belonging: "#1699a8", delight: "#eb6834", expertise: "#5b6fd6", creativity: "#e0a100", agency: "#c9508a" };
@@ -499,7 +499,7 @@
     const total = v => v.teachers + v.learners + v.fellows;
     const bin = n => MAP_BINS.find(b => n >= b[0]);
     let shapes = "", labels = "";
-    Object.entries(K.counties).forEach(([name, c]) => {
+    Object.entries(K.counties).sort((a, b) => (fp[a[0]] ? 1 : 0) - (fp[b[0]] ? 1 : 0)).forEach(([name, c]) => {
       const v = fp[name], n = v ? total(v) : 0, b = n ? bin(n) : null;
       const parts = v ? [v.learners && `${fmt(v.learners)} learners in partner schools`, v.teachers && `${v.teachers} teachers trained`, v.fellows && `${v.fellows} Fellow${v.fellows > 1 ? "s" : ""}`, v.events && `${v.events} Knowledge Sharing Event`].filter(Boolean).join(", ") : "no Metis activity in this data";
       shapes += `<path class="cty-shape${b ? " on" : ""}" d="${c.d}" style="fill:${b ? b[2] : "var(--map-off)"}" tabindex="${b ? 0 : -1}" data-tip="${esc(`${name}: ${parts}`)}"/>`;
@@ -510,7 +510,7 @@
       }
     });
     const legend = `<div class="lg">${MAP_BINS.map(b => swatch(b[2], b[1])).join("")}${swatch("var(--map-off)", "No activity in this data")}</div>`;
-    return `<svg class="chart map" viewBox="0 0 ${K.w} ${K.h}" role="img" aria-label="Map of Kenya's 47 counties shaded by people Metis reaches">${shapes}${labels}</svg>${legend}<p class="map-src">Learners, teachers and Fellows reached per county. Boundaries: ${esc(K.source)}.</p>`;
+    return `<svg class="chart map" viewBox="0 0 ${K.w} ${K.h}" role="img" aria-label="Map of Kenya's 47 counties shaded by people Metis reaches">${shapes}${K.outline ? `<path class="ken-outline" d="${K.outline}"/>` : ""}${labels}</svg>${legend}<p class="map-src">Learners, teachers and Fellows reached per county. Boundaries: ${esc(K.source)}.</p>`;
   }
 
   function staircase(levels, n) {
@@ -634,8 +634,8 @@
         ${dcard(5, "How each outcome has moved", `The same ${matched.length} schools in every term, so the comparison is like for like.`, trend, "#/programs/schools")}
         ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun, "#/programs/innovated")}
         ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` : empty("No verified InnovatED data yet."), "#/programs/innovated")}
-        ${dcard(5, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Hover over a county for the detail.", countyMap(footprint()))}
-        ${dcard(7, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
+        ${dcard(6, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Hover over a county for the detail.", countyMap(footprint()))}
+        ${dcard(6, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
         ${dcard(4, "Fellowship cohort", `${f.n} Fellows by status, ${termLabel(f.term)}.`, waffle, "#/programs/fellowship")}
         ${dcard(4, "From reaction to learners", "Guskey's five levels: Fellows reaching each one.", guskey, "#/programs/fellowship")}
         ${dcard(4, "Feedback turnaround", "", fb, "#/programs/fellowship")}
