@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Metis Whole Child Impact Portal</title>
+  <meta name="description" content="Concept prototype: an impact portal for Metis's Whole Child Learning work across the Fellowship, InnovatED, partner schools, the Kenya EdTech Testbed and Knowledge Sharing Events.">
+  <link rel="icon" href="assets/img/icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Poppins:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/portal.css">
+</head>
+<body data-role="staff">
+  <a class="skip" href="#view">Skip to content</a>
+  <div class="app">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#/overview">
+        <img src="assets/img/metis-logo.png" alt="Metis" width="112" height="32">
+        <span class="brand-sub">Whole Child Impact Portal</span>
+      </a>
+      <nav id="nav" aria-label="Portal sections"></nav>
+      <div class="side-foot">
+        <div class="data-tools">
+          <button class="btn small" data-action="export">Export data</button>
+          <button class="btn small" data-action="import">Import data</button>
+          <button class="text-link as-btn small" data-action="reset">Reset sample data</button>
+          <input type="file" id="import-input" accept="application/json,.json" hidden>
+        </div>
+        <p class="disclaimer">Concept prototype by Hillary Atindah. Not an official Metis platform. Fictional sample data.</p>
+      </div>
+    </aside>
+    <div class="scrim" data-action="menu"></div>
+    <div class="main">
+      <header class="topbar">
+        <button class="menu-btn" data-action="menu" aria-label="Open menu">&#9776;</button>
+        <div class="topbar-title">Whole Child Learning Impact Portal</div>
+        <div class="role-box">
+          <label for="role">Viewing as</label>
+          <select id="role"></select>
+          <span id="role-hint" class="role-hint"></span>
+        </div>
+      </header>
+      <p class="proto-strip"><strong>Concept prototype.</strong> Built by Hillary Atindah to show how Metis could track Whole Child Learning. Not an official Metis platform. All figures are fictional sample data, and anything you add is saved in this browser only.</p>
+      <main id="view" tabindex="-1"></main>
+    </div>
+  </div>
+  <div id="tip" role="tooltip" hidden></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <dialog id="dlg" aria-label="Dialog"></dialog>
+  <script src="assets/js/data.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
