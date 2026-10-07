@@ -401,19 +401,9 @@
 
   /* ---------- views ---------- */
   /* ---------- dashboard (landing page) ---------- */
-  const COUNTY_LL = {
-    "Baringo": [0.85, 35.97], "Bomet": [-0.78, 35.34], "Bungoma": [0.78, 34.72], "Busia": [0.43, 34.18], "Elgeyo-Marakwet": [0.9, 35.55],
-    "Embu": [-0.55, 37.65], "Garissa": [-0.45, 39.65], "Homa Bay": [-0.55, 34.45], "Isiolo": [0.95, 38.75], "Kajiado": [-2.1, 36.8],
-    "Kakamega": [0.3, 34.75], "Kericho": [-0.35, 35.3], "Kiambu": [-1.0, 36.9], "Kilifi": [-3.3, 39.65], "Kirinyaga": [-0.55, 37.3],
-    "Kisii": [-0.7, 34.77], "Kisumu": [-0.15, 34.85], "Kitui": [-1.5, 38.35], "Kwale": [-4.15, 39.2], "Laikipia": [0.3, 36.8],
-    "Lamu": [-2.1, 40.75], "Machakos": [-1.35, 37.45], "Makueni": [-2.1, 37.75], "Mandera": [3.55, 40.65], "Marsabit": [2.6, 37.9],
-    "Meru": [0.2, 37.75], "Migori": [-1.05, 34.45], "Mombasa": [-4.04, 39.66], "Murang'a": [-0.8, 37.05], "Nairobi": [-1.29, 36.82],
-    "Nakuru": [-0.35, 36.1], "Nandi": [0.2, 35.1], "Narok": [-1.35, 35.65], "Nyamira": [-0.6, 34.95], "Nyandarua": [-0.3, 36.45],
-    "Nyeri": [-0.4, 36.95], "Samburu": [1.4, 37.0], "Siaya": [0.05, 34.3], "Taita-Taveta": [-3.4, 38.45], "Tana River": [-1.55, 39.5],
-    "Tharaka-Nithi": [-0.25, 37.95], "Trans Nzoia": [1.05, 34.95], "Turkana": [3.3, 35.6], "Uasin Gishu": [0.55, 35.3], "Vihiga": [0.05, 34.7],
-    "Wajir": [1.75, 40.05], "West Pokot": [1.6, 35.35]
-  };
-  const MAP_LABEL = { "Nairobi": [-14, 5, "end"], "Kiambu": [14, -14, "start"], "Machakos": [17, 5, "start"], "Kajiado": [0, 30, "middle"], "Nakuru": [0, -19, "middle"], "Kisumu": [0, 26, "middle"], "Turkana": [12, 4, "start"] };
+  /* Label nudges for small or crowded counties: [dx, dy, anchor, leader line] */
+  const MAP_LABEL = { "Nairobi": [-58, 22, "end", true], "Kiambu": [-4, -9, "middle"], "Kajiado": [0, 6, "middle"], "Kisumu": [-6, -12, "middle"], "Machakos": [24, 3, "middle"] };
+  const MAP_BINS = [[1000, "1,000 or more", "#13808d"], [100, "100 to 999", "#6dbcc6"], [1, "Under 100", "#c6e6ea"]];
   /* Colours assigned by where each line sits, so neighbouring lines always differ clearly. */
   const NS_COLOR = { belonging: "#1699a8", delight: "#eb6834", expertise: "#5b6fd6", creativity: "#e0a100", agency: "#c9508a" };
 
@@ -503,22 +493,24 @@
     return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Use at eight weeks against cost per teacher using the tool, by site">${g}</svg>`;
   }
 
-  function dotMap(fp) {
-    const W = 320, H = 377, lon0 = 33.6, lon1 = 42.0, lat0 = 5.1, lat1 = -4.8;
-    const X = lon => (lon - lon0) / (lon1 - lon0) * W, Y = lat => (lat0 - lat) / (lat0 - lat1) * H;
-    let g = "";
-    Object.entries(COUNTY_LL).forEach(([c, ll]) => { if (!fp[c]) g += `<circle class="cty" cx="${X(ll[1])}" cy="${Y(ll[0])}" r="3.4" data-tip="${esc(c)}: no Metis activity in this data"/>`; });
-    const act = Object.entries(fp).filter(([c]) => COUNTY_LL[c]).map(([c, v]) => ({ c, v, total: v.teachers + v.learners + v.fellows })).sort((a, b) => b.total - a.total);
-    act.forEach(a => {
-      const [lat, lon] = COUNTY_LL[a.c], x = X(lon), y = Y(lat), rad = 4 + Math.sqrt(a.total) * 0.32;
-      const parts = [a.v.learners && `${fmt(a.v.learners)} learners in partner schools`, a.v.teachers && `${a.v.teachers} teachers trained`, a.v.fellows && `${a.v.fellows} Fellows`, a.v.events && `${a.v.events} Knowledge Sharing Event`].filter(Boolean).join(", ");
-      g += `<circle class="cty-on" cx="${x}" cy="${y}" r="${rad}" tabindex="0" data-tip="${esc(`${a.c}: ${parts}`)}"/>`;
+  function countyMap(fp) {
+    const K = window.KENYA_MAP;
+    if (!K) return empty("Map data didn't load.");
+    const total = v => v.teachers + v.learners + v.fellows;
+    const bin = n => MAP_BINS.find(b => n >= b[0]);
+    let shapes = "", labels = "";
+    Object.entries(K.counties).forEach(([name, c]) => {
+      const v = fp[name], n = v ? total(v) : 0, b = n ? bin(n) : null;
+      const parts = v ? [v.learners && `${fmt(v.learners)} learners in partner schools`, v.teachers && `${v.teachers} teachers trained`, v.fellows && `${v.fellows} Fellow${v.fellows > 1 ? "s" : ""}`, v.events && `${v.events} Knowledge Sharing Event`].filter(Boolean).join(", ") : "no Metis activity in this data";
+      shapes += `<path class="cty-shape${b ? " on" : ""}" d="${c.d}" style="fill:${b ? b[2] : "var(--map-off)"}" tabindex="${b ? 0 : -1}" data-tip="${esc(`${name}: ${parts}`)}"/>`;
+      if (b) {
+        const o = MAP_LABEL[name] || [0, 4, "middle"], lx = c.cx + o[0], ly = c.cy + o[1];
+        if (o[3]) labels += `<line class="map-leader" x1="${c.cx}" y1="${c.cy}" x2="${lx + 3}" y2="${ly - 4}"/><circle class="map-pin" cx="${c.cx}" cy="${c.cy}" r="2.6"/>`;
+        labels += `<text class="map-lab" x="${lx}" y="${ly}" text-anchor="${o[2]}">${esc(name)}</text>`;
+      }
     });
-    act.forEach(a => {
-      const [lat, lon] = COUNTY_LL[a.c], o = MAP_LABEL[a.c] || [10, 4, "start"];
-      g += `<text class="map-lab" x="${X(lon) + o[0]}" y="${Y(lat) + o[1]}" text-anchor="${o[2]}">${esc(a.c)}</text>`;
-    });
-    return `<svg class="chart map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Counties where Metis works">${g}</svg>`;
+    const legend = `<div class="lg">${MAP_BINS.map(b => swatch(b[2], b[1])).join("")}${swatch("var(--map-off)", "No activity in this data")}</div>`;
+    return `<svg class="chart map" viewBox="0 0 ${K.w} ${K.h}" role="img" aria-label="Map of Kenya's 47 counties shaded by people Metis reaches">${shapes}${labels}</svg>${legend}<p class="map-src">Learners, teachers and Fellows reached per county. Boundaries: ${esc(K.source)}.</p>`;
   }
 
   function staircase(levels, n) {
@@ -642,7 +634,7 @@
         ${dcard(5, "How each outcome has moved", `The same ${matched.length} schools in every term, so the comparison is like for like.`, trend, "#/programs/schools")}
         ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun, "#/programs/innovated")}
         ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` : empty("No verified InnovatED data yet."), "#/programs/innovated")}
-        ${dcard(5, "Where we work", "Learners, teachers and Fellows by county. Each grey dot is a county with no activity in this data.", dotMap(footprint()))}
+        ${dcard(5, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Hover over a county for the detail.", countyMap(footprint()))}
         ${dcard(7, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
         ${dcard(4, "Fellowship cohort", `${f.n} Fellows by status, ${termLabel(f.term)}.`, waffle, "#/programs/fellowship")}
         ${dcard(4, "From reaction to learners", "Guskey's five levels: Fellows reaching each one.", guskey, "#/programs/fellowship")}

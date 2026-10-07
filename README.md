@@ -10,7 +10,7 @@ A concept prototype of an impact portal built around how Metis already works: th
 
 | METIS Way | Area | What it does |
 |---|---|---|
-| | Dashboard | Stat tiles, the North Star puzzle, outcome trends, a registration-to-use funnel, cost-against-results bubbles, a county map, a school heatmap, Fellowship waffle and Guskey staircase, a feedback bullet chart, an event pictogram, the EdTech evidence ladder, open decisions and a learner voice |
+| | Dashboard | Stat tiles, the North Star puzzle, outcome trends, a registration-to-use funnel, cost-against-results bubbles, a Kenya county map, a school heatmap, Fellowship waffle and Guskey staircase, a feedback bullet chart, an event pictogram, the EdTech evidence ladder, open decisions and a learner voice |
 | m | Design map | The design thinking map: challenge, needs, objectives, outcome chain, impact and the expert council's requirements |
 | e | Voices | Anonymous, consented quotes from learners, teachers, caregivers and Fellows, tagged by North Star outcome |
 | t | Programmes | Fellowship, InnovatED, Whole Child Schools, Kenya EdTech Testbed, Knowledge Sharing Events |
@@ -68,6 +68,8 @@ index.html                  App shell
 assets/css/portal.css       Styles (Metis teal, navy, orange; Poppins and Inter)
 assets/js/data.js           Programme config, dataset schemas, sample data, design map
 assets/js/app.js            Checks, metrics, decision prompts, views
+assets/js/kenya-map.js      Kenya's 47 county outlines as SVG paths (generated)
+tools/build_kenya_map.py    Rebuilds kenya-map.js from geoBoundaries data
 assets/img/                 Logo and icon
 templates/                  CSV templates for each dataset
 docs/DESIGN-THINKING-MAP.md The design thinking map
@@ -75,4 +77,4 @@ docs/DESIGN-THINKING-MAP.md The design thinking map
 
 ## Sources
 
-The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation; Kenya Data Protection Act (2019).
+The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation; Kenya Data Protection Act (2019). County boundaries: geoBoundaries gbOpen KEN ADM1 (RCMRD GeoPortal), public domain.
