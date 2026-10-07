@@ -10,7 +10,7 @@ A concept prototype of an impact portal built around how Metis already works: th
 
 | METIS Way | Area | What it does |
 |---|---|---|
-| | Impact overview | The North Star for partner schools, the leader to teacher to learner ripple, programme tiles, open decisions and data trust |
+| | Dashboard | Stat tiles, the North Star puzzle, outcome trends, a registration-to-use funnel, cost-against-results bubbles, a county map, a school heatmap, Fellowship waffle and Guskey staircase, a feedback bullet chart, an event pictogram, the EdTech evidence ladder, open decisions and a learner voice |
 | m | Design map | The design thinking map: challenge, needs, objectives, outcome chain, impact and the expert council's requirements |
 | e | Voices | Anonymous, consented quotes from learners, teachers, caregivers and Fellows, tagged by North Star outcome |
 | t | Programmes | Fellowship, InnovatED, Whole Child Schools, Kenya EdTech Testbed, Knowledge Sharing Events |

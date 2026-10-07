@@ -400,68 +400,257 @@
   const empty = (text, action) => `<div class="empty"><p>${text}</p>${action || ""}</div>`;
 
   /* ---------- views ---------- */
+  /* ---------- dashboard (landing page) ---------- */
+  const COUNTY_LL = {
+    "Baringo": [0.85, 35.97], "Bomet": [-0.78, 35.34], "Bungoma": [0.78, 34.72], "Busia": [0.43, 34.18], "Elgeyo-Marakwet": [0.9, 35.55],
+    "Embu": [-0.55, 37.65], "Garissa": [-0.45, 39.65], "Homa Bay": [-0.55, 34.45], "Isiolo": [0.95, 38.75], "Kajiado": [-2.1, 36.8],
+    "Kakamega": [0.3, 34.75], "Kericho": [-0.35, 35.3], "Kiambu": [-1.0, 36.9], "Kilifi": [-3.3, 39.65], "Kirinyaga": [-0.55, 37.3],
+    "Kisii": [-0.7, 34.77], "Kisumu": [-0.15, 34.85], "Kitui": [-1.5, 38.35], "Kwale": [-4.15, 39.2], "Laikipia": [0.3, 36.8],
+    "Lamu": [-2.1, 40.75], "Machakos": [-1.35, 37.45], "Makueni": [-2.1, 37.75], "Mandera": [3.55, 40.65], "Marsabit": [2.6, 37.9],
+    "Meru": [0.2, 37.75], "Migori": [-1.05, 34.45], "Mombasa": [-4.04, 39.66], "Murang'a": [-0.8, 37.05], "Nairobi": [-1.29, 36.82],
+    "Nakuru": [-0.35, 36.1], "Nandi": [0.2, 35.1], "Narok": [-1.35, 35.65], "Nyamira": [-0.6, 34.95], "Nyandarua": [-0.3, 36.45],
+    "Nyeri": [-0.4, 36.95], "Samburu": [1.4, 37.0], "Siaya": [0.05, 34.3], "Taita-Taveta": [-3.4, 38.45], "Tana River": [-1.55, 39.5],
+    "Tharaka-Nithi": [-0.25, 37.95], "Trans Nzoia": [1.05, 34.95], "Turkana": [3.3, 35.6], "Uasin Gishu": [0.55, 35.3], "Vihiga": [0.05, 34.7],
+    "Wajir": [1.75, 40.05], "West Pokot": [1.6, 35.35]
+  };
+  const MAP_LABEL = { "Nairobi": [-14, 5, "end"], "Kiambu": [14, -14, "start"], "Machakos": [17, 5, "start"], "Kajiado": [0, 30, "middle"], "Nakuru": [0, -19, "middle"], "Kisumu": [0, 26, "middle"], "Turkana": [12, 4, "start"] };
+  /* Colours assigned by where each line sits, so neighbouring lines always differ clearly. */
+  const NS_COLOR = { belonging: "#1699a8", delight: "#eb6834", expertise: "#5b6fd6", creativity: "#e0a100", agency: "#c9508a" };
+
+  function latestSchoolObs() {
+    return C.SCHOOLS.map(s => {
+      let found = null;
+      C.TERMS.forEach(t => { const it = verifiedItems("school_obs", t.id).find(x => x.row.school === s.id && !x.res.exclRow); if (it) found = { term: t.id, row: it.row }; });
+      return { s, found, waiting: subsOf("school_obs", "submitted").some(sub => sub.rows.some(r => r.school === s.id)) };
+    });
+  }
+  function footprint() {
+    const out = {};
+    const put = (c, k, v) => { if (!c) return; out[c] = out[c] || { teachers: 0, learners: 0, fellows: 0, events: 0 }; out[c][k] += v; };
+    const m = innovated(); if (m) m.base.forEach(x => put(x.row.county, "teachers", +x.row.completed));
+    C.SCHOOLS.forEach(s => put(s.county, "learners", s.learners));
+    fellowship().rows.forEach(r => put(r.county, "fellows", 1));
+    events().rows.forEach(r => put(r.county, "events", 1));
+    return out;
+  }
+
+  function ring(frac, size, stroke, label) {
+    const f = Math.max(0, Math.min(1, frac)), r = (size - stroke) / 2, c = 2 * Math.PI * r, h = size / 2;
+    return `<svg class="ring" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(label)}">
+      <circle cx="${h}" cy="${h}" r="${r}" class="ring-track" stroke-width="${stroke}"/>
+      <circle cx="${h}" cy="${h}" r="${r}" class="ring-fill" stroke-width="${stroke}" stroke-dasharray="${(c * f).toFixed(1)} ${c.toFixed(1)}" transform="rotate(-90 ${h} ${h})"/>
+      <text x="${h}" y="${h}" dominant-baseline="central" text-anchor="middle" class="ring-text">${Math.round(f * 100)}%</text></svg>`;
+  }
+
+  function lineChart(series, xLabels, o) {
+    const W = 470, H = 250, l = 40, r = 140, t = 14, b = 34;
+    const X = i => l + (W - l - r) * i / (xLabels.length - 1);
+    const Y = v => t + (H - t - b) * (1 - (v - o.yMin) / (o.yMax - o.yMin));
+    let g = "";
+    for (let v = o.yMin; v <= o.yMax; v += o.step) g += `<line class="grid" x1="${l}" x2="${W - r + 4}" y1="${Y(v)}" y2="${Y(v)}"/><text class="axis" x="${l - 8}" y="${Y(v) + 4}" text-anchor="end">${v}%</text>`;
+    xLabels.forEach((x, i) => { g += `<text class="axis" x="${X(i)}" y="${H - 10}" text-anchor="middle">${esc(x)}</text>`; });
+    series.forEach(s => {
+      g += `<polyline class="ln" style="stroke:${s.color}" points="${s.vals.map((v, i) => `${X(i)},${Y(v)}`).join(" ")}"/>`;
+      s.vals.forEach((v, i) => { g += `<circle class="pt" cx="${X(i)}" cy="${Y(v)}" r="5" style="fill:${s.color}" tabindex="0" data-tip="${esc(`${s.name}, ${xLabels[i]}: evident in ${Math.round(v)}% of observed lessons`)}"/>`; });
+    });
+    const last = xLabels.length - 1;
+    const ends = series.map(s => ({ s, y: Y(s.vals[last]) })).sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ends.length; i++) if (ends[i].y - ends[i - 1].y < 16) ends[i].y = ends[i - 1].y + 16;
+    ends.forEach(e => { g += `<line class="key-line" x1="${X(last) + 10}" x2="${X(last) + 22}" y1="${e.y}" y2="${e.y}" style="stroke:${e.s.color}"/><text class="end-lab" x="${X(last) + 28}" y="${e.y + 4}">${esc(e.s.name)} <tspan class="end-val">${Math.round(e.s.vals[last])}%</tspan></text>`; });
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(o.label)}">${g}</svg>`;
+  }
+
+  function funnelSVG(groups) {
+    const W = 560, colW = W / groups.length, rowH = 66, top = 44, h = 30, maxBar = colW - 84;
+    let g = "";
+    groups.forEach((gr, gi) => {
+      const cx = gi * colW + colW / 2 - 16;
+      g += `<text class="fun-title" x="${cx}" y="16" text-anchor="middle">${esc(gr.name)}</text>`;
+      gr.stages.forEach((s, si) => {
+        const w = Math.max(4, maxBar * s.value / 100), y = top + si * rowH;
+        if (si > 0) {
+          const pw = Math.max(4, maxBar * gr.stages[si - 1].value / 100), py = top + (si - 1) * rowH + h;
+          g += `<polygon class="fun-link" style="fill:${gr.color}" points="${cx - pw / 2},${py} ${cx + pw / 2},${py} ${cx + w / 2},${y} ${cx - w / 2},${y}"/>`;
+        }
+        g += `<text class="fun-stage" x="${cx}" y="${y - 7}" text-anchor="middle">${esc(s.label)}</text>
+          <g tabindex="0" data-tip="${esc(`${gr.name}: ${s.label.toLowerCase()}, ${Math.round(s.value)} of every 100 who registered (${s.note})`)}">
+          <rect x="${cx - w / 2}" y="${y}" width="${w}" height="${h}" rx="4" style="fill:${gr.color}"/>
+          <text class="fun-val" x="${cx + w / 2 + 8}" y="${y + h / 2 + 5}">${Math.round(s.value)}</text></g>`;
+      });
+    });
+    return `<svg class="chart" viewBox="0 0 ${W} ${top + groups[0].stages.length * rowH - 20}" role="img" aria-label="Registration to classroom use, per 100 teachers who register">${g}</svg>`;
+  }
+
+  function bubbleSVG(items) {
+    const W = 560, H = 330, l = 62, r = 22, t = 30, b = 48;
+    const pts = items.map(x => ({ s: x.row.site, c: x.row.county, d: x.row.delivered_by, n: +x.row.registered, u: +x.row.using_pct, cpu: x.row.cost_per_completer / (x.row.using_pct / 100) }));
+    const yMax = Math.ceil(Math.max(...pts.map(p => p.cpu)) / 4000) * 4000;
+    const X = v => l + (W - l - r) * v / 100, Y = v => t + (H - t - b) * (1 - v / yMax);
+    let g = "";
+    for (let v = 0; v <= yMax; v += 4000) g += `<line class="grid" x1="${l}" x2="${W - r}" y1="${Y(v)}" y2="${Y(v)}"/><text class="axis" x="${l - 8}" y="${Y(v) + 4}" text-anchor="end">${fmt(v)}</text>`;
+    for (let v = 0; v <= 100; v += 20) g += `<text class="axis" x="${X(v)}" y="${H - b + 18}" text-anchor="middle">${v}%</text>`;
+    const mu = median(pts.map(p => p.u)), mc = median(pts.map(p => p.cpu));
+    g += `<line class="ref" x1="${X(mu)}" x2="${X(mu)}" y1="${t}" y2="${H - b}"/><line class="ref" x1="${l}" x2="${W - r}" y1="${Y(mc)}" y2="${Y(mc)}"/>
+      <text class="quad" x="${W - r - 4}" y="${H - b - 8}" text-anchor="end">Higher use, lower cost</text>
+      <text class="ax-title" x="${l}" y="14">KES per teacher using the tool</text>
+      <text class="ax-title" x="${(l + W - r) / 2}" y="${H - 8}" text-anchor="middle">Teachers using the tool at 8 weeks</text>`;
+    const crowded = p => pts.some(q => q !== p && Math.hypot(X(q.u) - X(p.u), Y(q.cpu) - Y(p.cpu)) < 30);
+    pts.sort((a, b) => b.n - a.n).forEach(p => {
+      const rad = 4 + Math.sqrt(p.n) * 1.7, cls = p.d === "Metis" ? "s-metis" : "s-partner";
+      g += `<g tabindex="0" class="bub-g" data-tip="${esc(`Site ${p.s}, ${p.c} (${p.d}-led): ${p.u}% using the tool, ${kes(p.cpu)} per teacher using it, ${p.n} registered`)}">
+        <circle class="bub ${cls}" cx="${X(p.u)}" cy="${Y(p.cpu)}" r="${rad}"/>${crowded(p) ? "" : `<text class="bub-lab" x="${X(p.u) + rad + 3}" y="${Y(p.cpu) + 4}">${esc(p.s)}</text>`}</g>`;
+    });
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Use at eight weeks against cost per teacher using the tool, by site">${g}</svg>`;
+  }
+
+  function dotMap(fp) {
+    const W = 320, H = 377, lon0 = 33.6, lon1 = 42.0, lat0 = 5.1, lat1 = -4.8;
+    const X = lon => (lon - lon0) / (lon1 - lon0) * W, Y = lat => (lat0 - lat) / (lat0 - lat1) * H;
+    let g = "";
+    Object.entries(COUNTY_LL).forEach(([c, ll]) => { if (!fp[c]) g += `<circle class="cty" cx="${X(ll[1])}" cy="${Y(ll[0])}" r="3.4" data-tip="${esc(c)}: no Metis activity in this data"/>`; });
+    const act = Object.entries(fp).filter(([c]) => COUNTY_LL[c]).map(([c, v]) => ({ c, v, total: v.teachers + v.learners + v.fellows })).sort((a, b) => b.total - a.total);
+    act.forEach(a => {
+      const [lat, lon] = COUNTY_LL[a.c], x = X(lon), y = Y(lat), rad = 4 + Math.sqrt(a.total) * 0.32;
+      const parts = [a.v.learners && `${fmt(a.v.learners)} learners in partner schools`, a.v.teachers && `${a.v.teachers} teachers trained`, a.v.fellows && `${a.v.fellows} Fellows`, a.v.events && `${a.v.events} Knowledge Sharing Event`].filter(Boolean).join(", ");
+      g += `<circle class="cty-on" cx="${x}" cy="${y}" r="${rad}" tabindex="0" data-tip="${esc(`${a.c}: ${parts}`)}"/>`;
+    });
+    act.forEach(a => {
+      const [lat, lon] = COUNTY_LL[a.c], o = MAP_LABEL[a.c] || [10, 4, "start"];
+      g += `<text class="map-lab" x="${X(lon) + o[0]}" y="${Y(lat) + o[1]}" text-anchor="${o[2]}">${esc(a.c)}</text>`;
+    });
+    return `<svg class="chart map" viewBox="0 0 ${W} ${H}" role="img" aria-label="Counties where Metis works">${g}</svg>`;
+  }
+
+  function staircase(levels, n) {
+    const W = 360, H = 210, l = 6, t = 22, b = 46, k = levels.length, slot = (W - 2 * l) / k, bw = 24;
+    const Y = v => t + (H - t - b) * (1 - v / n);
+    let g = `<line class="grid" x1="${l}" x2="${W - l}" y1="${Y(0)}" y2="${Y(0)}"/>`;
+    levels.forEach((lv, i) => {
+      const cx = l + slot * i + slot / 2, y = Y(lv.value);
+      g += `<g tabindex="0" data-tip="${esc(`Level ${i + 1}, ${lv.label}: ${lv.value} of ${n} Fellows`)}"><path class="col-bar" d="M${cx - bw / 2},${Y(0)} V${y + 4} Q${cx - bw / 2},${y} ${cx - bw / 2 + 4},${y} H${cx + bw / 2 - 4} Q${cx + bw / 2},${y} ${cx + bw / 2},${y + 4} V${Y(0)} Z"/>
+        <text class="cap" x="${cx}" y="${y - 6}" text-anchor="middle">${lv.value}</text></g>
+        <text class="col-lab" x="${cx}" y="${H - b + 18}" text-anchor="middle">${i + 1} ${esc(lv.short)}</text>`;
+    });
+    return `<svg class="chart" viewBox="0 0 ${W} ${H - 18}" role="img" aria-label="Guskey levels for the Fellowship cohort">${g}</svg>`;
+  }
+
+  function bullet(rows, target, max) {
+    const W = 370, H = 104, l = 6, r = 10, ty = 40, th = 26, X = v => l + (W - l - r) * v / max;
+    const now = rows[rows.length - 1], prev = rows.slice(0, -1);
+    let g = `<rect class="band-a" x="${X(0)}" y="${ty}" width="${X(target) - X(0)}" height="${th}" rx="4"/>
+      <rect class="band-b" x="${X(target)}" y="${ty}" width="${X(8) - X(target)}" height="${th}"/>
+      <rect class="band-c" x="${X(8)}" y="${ty}" width="${X(max) - X(8)}" height="${th}" rx="4"/>
+      <text class="bul-band" x="${X(target / 2)}" y="${ty + th + 16}" text-anchor="middle">on target</text>
+      <text class="bul-band" x="${X(6.5)}" y="${ty + th + 16}" text-anchor="middle">watch</text>
+      <text class="bul-band" x="${X(10)}" y="${ty + th + 16}" text-anchor="middle">slow</text>
+      <rect class="bul-bar" x="${X(0)}" y="${ty + 8}" width="${X(+now.median_days) - X(0)}" height="10" rx="3" tabindex="0" data-tip="${esc(`${termLabel(now.period)}: ${now.median_days} days median, target ${target}`)}"/>
+      <line class="bul-target" x1="${X(target)}" x2="${X(target)}" y1="${ty - 5}" y2="${ty + th + 5}"/>`;
+    prev.forEach(p => { const x = X(+p.median_days); g += `<path class="bul-prev" d="M${x - 6},${ty - 14} L${x + 6},${ty - 14} L${x},${ty - 5} Z" tabindex="0" data-tip="${esc(`${termLabel(p.period)}: ${p.median_days} days`)}"/><text class="bul-lab" x="${x}" y="${ty - 19}" text-anchor="middle">${esc(termLabel(p.period).replace(", 2026", ""))}</text>`; });
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="Feedback turnaround against the five-day target">${g}</svg>`;
+  }
+
+  function ladderSVG(pilots) {
+    const W = 560, rowH = 56, t = 26, l = 18, r = 70, S = C.PILOT_STAGES, H = t + pilots.length * rowH + 4;
+    const X = i => l + (W - l - r) * i / (S.length - 1);
+    let g = S.map((s, i) => `<text class="lad-stage" x="${X(i)}" y="12" text-anchor="middle">${s}</text>`).join("");
+    pilots.forEach((p, i) => {
+      const si = Math.max(0, S.indexOf(p.stage)), y = t + i * rowH + 34, rad = 6 + Math.sqrt(+p.learners) / 9;
+      g += `<text class="lad-name" x="${l}" y="${y - 16}">${esc(p.pilot)}${p.status === "submitted" ? " (awaiting review)" : ""}</text>
+        <line class="lad-rest" x1="${X(0)}" x2="${X(S.length - 1)}" y1="${y}" y2="${y}"/>
+        ${S.map((_, k) => `<circle class="lad-tick" cx="${X(k)}" cy="${y}" r="3"/>`).join("")}
+        <line class="lad-track" x1="${X(0)}" x2="${X(si)}" y1="${y}" y2="${y}"/>
+        <circle class="lad-dot${p.status === "submitted" ? " pending" : ""}" cx="${X(si)}" cy="${y}" r="${rad}" tabindex="0" data-tip="${esc(`${p.pilot}: ${p.stage}. ${fmt(p.learners)} learners in ${p.schools} schools. ${p.result}. Evidence: ${p.evidence}.`)}"/>
+        <text class="lad-n" x="${X(S.length - 1) + 16}" y="${y + 4}">${fmt(p.learners)}</text>`;
+    });
+    return `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="EdTech pilots by evidence stage">${g}</svg>`;
+  }
+
+  const dcard = (span, title, sub, body, link) => `<section class="dcard span-${span}"><div class="dcard-head"><h2>${title}</h2>${link ? `<a class="more" href="${link}">Details</a>` : ""}</div>${sub ? `<p class="dsub">${sub}</p>` : ""}<div class="dbody">${body}</div></section>`;
+  const swatch = (color, label) => `<span class="lg-item"><span class="sw" style="background:${color}"></span>${esc(label)}</span>`;
+
   function viewOverview() {
     const ns = northStarNow(), m = innovated(), f = fellowship(), e = events(), tb = testbed(), t = trust(), pr = prompts();
-    const pendingSchools = subsOf("school_obs", "submitted").flatMap(s => s.rows.map(r => r.school));
-    const learners = sum(C.SCHOOLS, s => s.learners);
-    const estLearners = m ? Math.round(m.users * 45 / 100) * 100 : 0;
-    const stageCount = C.STAGES.map(s => [s, C.SCHOOLS.filter(x => x.stage === s).length]).filter(x => x[1]);
-    const agencyGain = ns && ns.baseTerm ? Math.round(ns.values[0].value - ns.values[0].base) : null;
+    const learners = sum(C.SCHOOLS, s => s.learners), estLearners = m ? Math.round(m.users * 45 / 100) * 100 : 0;
 
-    const hero = ns ? `
-      <section class="hero card">
-        <div class="hero-text">
-          <div class="eyebrow">Learner outcomes · ${termLabel(ns.term)} · verified data</div>
-          <h1>Are the children we reach thriving as whole people?</h1>
-          <p class="lede">Share of observed lessons in Metis partner schools where each North Star outcome was clearly evident: ${ns.schools.length} schools, ${ns.lessons} lessons. ${ns.baseTerm ? `The dashed line marks ${termLabel(ns.baseTerm)} for the same schools.` : ""}</p>
-        </div>
-        ${northStarSVG(ns)}
-        ${pendingSchools.length && !isDonor() ? `<p class="note">${chip("wait", "Awaiting review")} ${termLabel(ns.term)} observations for ${pendingSchools.length} more schools aren't counted yet. <a href="#/review">Review them</a></p>` : ""}
-      </section>` : empty("No verified classroom observations yet.");
+    /* stat tiles, each with its own small visual */
+    const stats = `<div class="dash-kpis">
+      <div class="stat"><div class="stat-label">Learners reached</div><div class="stat-value">${fmt(learners)}</div>
+        <div class="mini-stack" data-tip="${esc(`${fmt(learners)} learners in partner schools, plus an estimated ${fmt(estLearners)} taught by teachers using InnovatED tools (45 per class)`)}" tabindex="0"><span class="solid" style="flex:${learners}"></span><span class="est" style="flex:${estLearners || 1}"></span></div>
+        <div class="stat-sub">in partner schools, plus about ${fmt(estLearners)} through InnovatED (estimate)</div></div>
+      <div class="stat stat-row"><div><div class="stat-label">Teachers using tools</div><div class="stat-value">${m ? fmt(m.users) : "n/a"}</div><div class="stat-sub">of ${m ? fmt(m.useCompleted) : 0} trained, at 8 weeks</div></div>${m ? ring(m.usePct, 64, 8, "Share of trained teachers using the tool") : ""}</div>
+      <div class="stat"><div class="stat-label">Fellows who led a full test</div><div class="stat-value">${f.led}<small>/${f.n}</small></div>
+        <div class="mini-dots" aria-hidden="true">${f.rows.map(r => `<i class="${r.led_full_test === "Yes" ? "on" : ""}"></i>`).join("")}</div><div class="stat-sub">Guskey level 4: using it in practice</div></div>
+      <div class="stat"><div class="stat-label">Event commitments followed up</div><div class="stat-value">${e.made ? pct(e.followed / e.made) : "n/a"}</div>
+        <div class="mini-cols">${e.rows.map((r, i) => { const v = r.commitments_followed / r.commitments_made; return `<div class="mini-col" tabindex="0" data-tip="${esc(`${r.event}: ${r.commitments_followed} of ${r.commitments_made} followed up`)}"><span style="height:${Math.round(v * 40)}px"></span>KSE ${i + 1}</div>`; }).join("")}</div><div class="stat-sub">${e.followed} of ${e.made}, within a term</div></div>
+      <div class="stat"><div class="stat-label">Data verified</div><div class="stat-value">${t.verified}<small>/${t.total}</small></div>
+        <div class="seg-bar" tabindex="0" data-tip="${esc(`${t.verified} verified, ${t.pending} awaiting review, ${t.returned} returned`)}"><span class="v" style="flex:${t.verified}"></span>${t.pending ? `<span class="w" style="flex:${t.pending}"></span>` : ""}${t.returned ? `<span class="r" style="flex:${t.returned}"></span>` : ""}</div>
+        <div class="stat-sub">${t.pending} awaiting review · ${t.held} rows held back</div></div>
+    </div>`;
 
-    const ripple = `
-      <section class="ripple" aria-label="How change reaches learners">
-        <div class="ripple-step"><div class="ripple-k">Leaders</div><div class="ripple-v">${f.n}</div><div class="ripple-s">Fellows, plus ${C.SCHOOLS.length} school design teams</div></div>
-        <div class="ripple-arrow" aria-hidden="true">→</div>
-        <div class="ripple-step"><div class="ripple-k">Teachers</div><div class="ripple-v">${m ? fmt(m.users) : "n/a"}</div><div class="ripple-s">${m ? `using InnovatED tools eight weeks after training, of ${fmt(m.useCompleted)} trained with follow-up data` : "No verified InnovatED data yet"}</div></div>
-        <div class="ripple-arrow" aria-hidden="true">→</div>
-        <div class="ripple-step"><div class="ripple-k">Learners</div><div class="ripple-v">${fmt(learners)}</div><div class="ripple-s">in partner schools${estLearners ? `, plus about ${fmt(estLearners)} taught by teachers using InnovatED tools (estimate at 45 per class)` : ""}</div></div>
-      </section>`;
+    /* North Star trend, matched schools only */
+    const matched = ns ? ns.schools : [];
+    const termsWith = C.TERMS.filter(x => northStar(x.id, matched).schools.length === matched.length && matched.length);
+    const series = C.NORTH_STAR.map(o => ({ name: o.name, color: NS_COLOR[o.key], vals: termsWith.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
+    const trend = termsWith.length > 1 ? lineChart(series, termsWith.map(x => x.label.replace(", 2026", "")), { yMin: 20, yMax: 80, step: 20, label: "North Star outcomes by term" }) +
+      `<div class="lg">${series.map(s => swatch(s.color, s.name)).join("")}</div>` : empty("Trends appear once two terms are verified.");
 
-    const tiles = [
-      { id: "fellowship", big: f.n ? `${f.led} of ${f.n}` : "n/a", line: "Fellows have led a full design test", sub: f.fbNow ? `Feedback in ${f.fbNow.median_days} days (target 5)` : "" },
-      { id: "innovated", big: m ? pct(m.usePct) : "n/a", line: "of trained teachers using the tool at 8 weeks", sub: m ? `${kes(m.costPerActive)} per teacher using it` : "" },
-      { id: "schools", big: agencyGain != null ? `${agencyGain >= 0 ? "+" : ""}${agencyGain} pts` : "n/a", line: "agency since Term 1, partner schools", sub: stageCount.map(s => `${s[1]} ${s[0].toLowerCase()}`).join(" · ") },
-      { id: "testbed", big: `${tb.verified.length} pilots`, line: `${fmt(tb.learners)} learners in tested products`, sub: `${tb.strong.length} with comparison-group evidence` },
-      { id: "events", big: e.made ? pct(e.followed / e.made) : "n/a", line: "of event commitments followed up", sub: `${fmt(e.attendees)} people across ${e.rows.length} events` }
-    ].map(x => { const p = C.PROGRAMS.find(q => q.id === x.id); return `
-      <a class="tile card" href="#/programs/${x.id}">
-        <div class="tile-name">${esc(p.name)}</div>
-        <div class="tile-big">${x.big}</div>
-        <div class="tile-line">${esc(x.line)}</div>
-        <div class="tile-sub">${esc(x.sub)}</div>
-        <div class="tile-job">${esc(p.job)}</div>
-      </a>`; }).join("");
+    /* InnovatED funnel and bubble */
+    const fun = m ? funnelSVG([["Metis-led", m.metis, "var(--teal)"], ["Partner-led", m.partner, "var(--orange)"]].map(([name, a, color]) => ({
+      name, color, stages: [
+        { label: "Registered", value: 100, note: `${fmt(a.useRegistered)} teachers` },
+        { label: "Completed", value: a.useCompleted / a.useRegistered * 100, note: `${fmt(a.useCompleted)} teachers` },
+        { label: "Using at 8 weeks", value: a.per100, note: `about ${fmt(a.users)} teachers` }]
+    }))) : empty("No verified InnovatED data yet.");
 
-    const side = isDonor() ? `
-      <aside class="card side-card"><h2>About this view</h2><p>You're seeing verified data only. Every figure has passed Metis's data checks and been reviewed by M&E. <a href="#/donor">Open the donor report</a></p></aside>` : `
-      <aside class="card side-card">
-        <h2>Needs a decision</h2>
-        ${pr.list.filter(p => p.sev === "decide").slice(0, 3).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev decide">Decide</span>${esc(p.title)}</a>`).join("") || "<p>No open decisions.</p>"}
-        <a class="text-link" href="#/decide">All prompts and the decision log</a>
-      </aside>
-      <aside class="card side-card">
-        <h2>Data trust</h2>
-        <div class="trust-meter" data-tip="${t.verified} of ${t.total} submissions verified" tabindex="0"><span style="width:${t.verified / Math.max(1, t.total) * 100}%"></span></div>
-        <p class="trust-line"><strong>${t.verified} of ${t.total}</strong> submissions verified. ${t.pending} awaiting review. ${t.held} rows held back by checks.</p>
-        <p class="muted small">Nothing counts until it's checked. Held-back rows stay out of the figures they affect.</p>
-        <a class="text-link" href="#/review">Review and trust</a>
-      </aside>`;
+    /* Heatmap */
+    const heat = `<div class="table-wrap"><table class="heat compact"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th title="${o.name}"><span class="ns-dot">${o.letter}</span></th>`).join("")}</tr></thead><tbody>
+      ${latestSchoolObs().map(({ s, found, waiting }) => `<tr><th scope="row">${esc(s.label.replace("Partner ", ""))}<span class="small muted"> · ${esc(s.county)}${found && found.term !== ns?.term ? ` · ${termLabel(found.term).replace(", 2026", "")}` : ""}</span>${waiting && !isDonor() ? ` ${chip("wait", "New data waiting")}` : ""}</th>
+        ${C.NORTH_STAR.map(o => { const v = found ? +found.row[o.key + "_pct"] : NaN; return `<td class="cell" style="background:${isFinite(v) ? heatColor(v) : "transparent"}" tabindex="0" data-tip="${esc(`${s.label}, ${o.name}: ${isFinite(v) ? v + "%" : "no data"}`)}">${isFinite(v) ? v : "n/a"}</td>`; }).join("")}</tr>`).join("")}
+      </tbody></table></div>`;
 
-    return `${hero}${ripple}
-      <div class="overview-grid">
-        <section><h2 class="section-title">Programme areas</h2><div class="tiles">${tiles}</div></section>
-        <div class="side">${side}</div>
+    /* Fellowship waffle */
+    const order = { "On track": 0, "Needs support": 1, "Re-sprint": 2 }, cls = { "On track": ["ok", "✓"], "Needs support": ["warn", "!"], "Re-sprint": ["bad", "↺"] };
+    const waffle = `<div class="wf" role="img" aria-label="${esc(f.status.map(s => `${s[1]} ${s[0]}`).join(", "))}">${[...f.rows].sort((a, b) => order[a.status] - order[b.status]).map(r => `<span class="wf-cell wf-${cls[r.status][0]}" tabindex="0" data-tip="${esc(`${r.fellow}: ${r.status}, ${r.org_type}, ${r.county}`)}">${cls[r.status][1]}</span>`).join("")}</div>
+      <div class="lg">${f.status.map(s => `<span class="lg-item"><span class="wf-key wf-${cls[s[0]][0]}">${cls[s[0]][1]}</span>${esc(s[0])} <strong>${s[1]}</strong></span>`).join("")}</div>`;
+
+    const guskey = staircase([
+      { label: "sessions feel relevant", short: "Reaction", value: f.relevant }, { label: "Milestone 2 met", short: "Learning", value: f.m2 },
+      { label: "sponsor actively supporting", short: "Support", value: f.sponsor }, { label: "led a full design test", short: "Use", value: f.led },
+      { label: "collecting learner evidence", short: "Learners", value: f.learner }], f.n);
+
+    const fb = f.feedback.length ? `<div class="bullet-wrap"><div class="bullet-big"><span>${f.fbNow.median_days}</span> days</div>${bullet(f.feedback, 5, 12)}</div><p class="small muted">Median days from a Fellow's facilitation to written feedback. The line marks the five-day target; arrows show earlier terms.</p>` : empty("No feedback data yet.");
+
+    /* Knowledge Sharing pictogram */
+    const per = 5;
+    const picto = e.rows.length ? `<div class="picto-wrap"><div class="picto">${e.groups.map(gp => { const v = sum(e.rows, r => +r[gp[0]]), full = Math.floor(v / per), part = v % per >= per / 2; return `<div class="picto-row" tabindex="0" data-tip="${esc(`${gp[1]}: ${v} people across ${e.rows.length} events`)}"><span class="picto-label">${esc(gp[1])}</span><span class="picto-dots">${"<i></i>".repeat(full)}${part ? '<i class="half"></i>' : ""}</span><span class="picto-n">${v}</span></div>`; }).join("")}<p class="small muted">Each dot is ${per} people.</p></div>
+      <div class="picto-side">${ring(e.followed / e.made, 96, 11, "Commitments followed up")}<div class="small">of ${e.made} commitments followed up within a term</div></div></div>` : empty("No verified event data yet.");
+
+    const pilots = [...tb.verified, ...(isDonor() ? [] : tb.pending)];
+    const voice = state.voices.filter(v => v.consent);
+    const spot = voice.length ? voice[new Date().getDate() % voice.length] : null;
+
+    const decide = isDonor() ? dcard(6, "About this view", "", `<p>You're seeing verified data only. Every figure has passed Metis's data checks and been reviewed by M&E.</p><a class="btn primary" href="#/donor">Open the donor report</a>`) :
+      dcard(6, "Needs a decision", "From rules agreed in advance", `${pr.list.slice(0, 4).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span>${esc(p.title)}</a>`).join("")}<a class="text-link more-link" href="#/decide">All prompts and the decision log</a>`);
+
+    return `<header class="page-head dash-head"><div><div class="eyebrow">Impact dashboard · verified data</div><h1>Whole Child Learning at a glance</h1>
+        <p class="lede">Every figure comes from data that has passed checks and been verified by M&E. Hover over or tap any chart for detail.</p></div>
+        ${t.pending && !isDonor() ? `<p class="note">${chip("wait", "Awaiting review")} ${t.pending} submissions aren't counted yet. <a href="#/review">Review them</a></p>` : ""}</header>
+      ${stats}
+      <div class="dash">
+        ${ns ? `<section class="dcard span-7 ns-card"><div class="dcard-head"><h2>Are the children we reach thriving as whole people?</h2><a class="more" href="#/programs/schools">Details</a></div>
+          <p class="dsub">Share of observed lessons where each North Star outcome was clearly evident: ${ns.schools.length} schools, ${ns.lessons} lessons, ${termLabel(ns.term)}. Dashed line: ${ns.baseTerm ? termLabel(ns.baseTerm) : "first term"}.</p>${northStarSVG(ns)}</section>` : ""}
+        ${dcard(5, "How each outcome has moved", `The same ${matched.length} schools in every term, so the comparison is like for like.`, trend, "#/programs/schools")}
+        ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun, "#/programs/innovated")}
+        ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` : empty("No verified InnovatED data yet."), "#/programs/innovated")}
+        ${dcard(5, "Where we work", "Learners, teachers and Fellows by county. Each grey dot is a county with no activity in this data.", dotMap(footprint()))}
+        ${dcard(7, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
+        ${dcard(4, "Fellowship cohort", `${f.n} Fellows by status, ${termLabel(f.term)}.`, waffle, "#/programs/fellowship")}
+        ${dcard(4, "From reaction to learners", "Guskey's five levels: Fellows reaching each one.", guskey, "#/programs/fellowship")}
+        ${dcard(4, "Feedback turnaround", "", fb, "#/programs/fellowship")}
+        ${dcard(6, "Who comes to Knowledge Sharing Events", `${fmt(e.attendees)} people across ${e.rows.length} events.`, picto, "#/programs/events")}
+        ${dcard(6, "EdTech evidence ladder", "Pilots move right only when the evidence is there. Dot size shows learners; the number is learners reached.", pilots.length ? ladderSVG(pilots) : empty("No pilots yet."), "#/programs/testbed")}
+        ${decide}
+        ${spot ? dcard(6, "In their words", "", `<figure class="spot"><blockquote>${esc(spot.text)}</blockquote><figcaption>${esc(spot.role)} · ${esc(spot.county)} <span class="voice-tags">${spot.tags.map(tg => C.NORTH_STAR.find(n => n.key === tg)).filter(Boolean).map(o => `<span class="ns-dot" title="${o.name}">${o.letter}</span>`).join("")}</span></figcaption></figure>`, "#/voices") : ""}
       </div>`;
   }
 
@@ -536,7 +725,7 @@
       <section class="card"><h2>Where the cohort is</h2>
         <ol class="sprints">${sprints.map((s, i) => `<li class="${i < cur ? "done" : i === cur ? "now" : ""}"><span class="sprint-n">Sprint ${i + 1}</span><span class="sprint-name">${s[0]}</span><span class="sprint-when">${s[1]}</span></li>`).join("")}</ol></section>
       <div class="two-col">
-        <section class="card"><h2>From reaction to learners</h2><p class="muted">Guskey's five levels. Each level is harder to reach than the one before.</p>${bars(guskey, { max: f.n })}</section>
+        <section class="card"><h2>From reaction to learners</h2><p class="muted">Guskey's five levels. The drop from organisational support to learner evidence is where coaching matters most.</p>${bars(guskey, { max: f.n })}</section>
         <section class="card"><h2>Feedback turnaround</h2><p class="muted">Median days from a Fellow's facilitation to written feedback. The line marks the five-day target.</p>
           ${bars(f.feedback.map(r => ({ label: termLabel(r.period), value: +r.median_days, text: `${r.median_days} days`, cls: +r.median_days > 5 ? "warn-fill" : "", tip: `${termLabel(r.period)}: ${r.median_days} days median across ${r.feedback_items} pieces of feedback; ${r.against_standard_pct}% written against the standard` })), { max: 10, target: 5 })}
           <p class="small muted">The facilitation standard came in at the start of Term 3.</p></section>
@@ -774,7 +963,7 @@
 
   /* ---------- shell ---------- */
   const NAV = [
-    { route: "overview", label: "Impact overview" },
+    { route: "overview", label: "Dashboard" },
     { stage: "m", name: "Make meaning" }, { route: "design", label: "Design map" },
     { stage: "e", name: "Empathize" }, { route: "voices", label: "Voices" },
     { stage: "t", name: "Tackle" }, ...C.PROGRAMS.map(p => ({ route: "programs/" + p.id, label: p.name, sub: true })),
