@@ -311,7 +311,7 @@
     });
     testbed().strong.forEach(p => out.push({
       program: "Kenya EdTech Testbed",
-      text: `In the EdTech Testbed, ${p.pilot.charAt(0).toLowerCase() + p.pilot.slice(1)} was tested in ${p.schools} schools with ${fmt(p.learners)} learners. ${p.result}.`,
+      text: `In the EdTech Testbed, the "${p.pilot}" pilot ran in ${p.schools} schools with ${fmt(p.learners)} learners. Result: ${p.result.charAt(0).toLowerCase() + p.result.slice(1)}.`,
       source: `${p.evidence} design, checked by M&E`, n: `n = ${fmt(p.learners)} learners`
     }));
     return out;
@@ -691,6 +691,8 @@
     if (missing.length) { add.blocked = `Missing columns: ${missing.map(f => f.key).join(", ")}. Download the template to see the expected headers.`; return; }
     const ignored = headers.filter((h, i) => !map[i]);
     if (ignored.length) add.notes.push(`Ignored columns the portal doesn't use: ${ignored.join(", ")}.`);
+    const piiIgnored = headers.filter((h, i) => !map[i] && grid.slice(1).some(r => PII_VALUE.test(r[i] || "")));
+    if (piiIgnored.length) add.notes.push(`The column ${piiIgnored.join(", ")} held what looks like a phone number or email address. It was not saved. Please remove it from your working copy too.`);
     let added = 0;
     grid.slice(1).forEach(cells => {
       const r = {};
