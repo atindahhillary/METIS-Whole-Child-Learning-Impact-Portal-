@@ -42,7 +42,7 @@ This map uses Metis's own design process, **the METIS Way** (Make meaning, Empat
 |---|---|---|---|
 | **Learners** (ECDE to junior school) | To be seen as more than an exam score; to feel safe, heard and able to shape their learning | Their experience is rarely recorded; when it is, it can expose them | North Star observations by school; anonymous, consented learner voice |
 | **Caregivers** | To know what changes for their child | Little feedback from programmes | Caregiver voices; event participation |
-| **Teachers** | Tools that save time in large classes; follow-up after training | Training ends on the last day; follow-up is a phone call to the head | InnovatED tracking of use at eight weeks, not just attendance |
+| **Teachers** | Tools that save time in large classes; follow-up after training; a say in what gets reported | Training ends on the last day; follow-up is a phone call to the head | A two-minute teacher check-in in English or Kiswahili, plus InnovatED use at eight weeks |
 | **School leaders and design teams** | To see whether whole-child practice is spreading across the staff | No shared view of progress | Adoption stage and North Star trends per school |
 | **Fellows** | A clear standard, timely feedback, visible progress | Late, unclear feedback; unsure what standard they are held to | Sprint and milestone tracking; feedback turnaround against a five-day target |
 | **Lead Coaches, Codifier, Associates, partners** | Fast data entry that doesn't duplicate reporting | Different spreadsheets per programme; errors found late | One "Add data" flow with templates and checks at the moment of entry |
@@ -167,5 +167,49 @@ Each lens set one requirement the portal had to meet.
 | Creativity | Learners imagine and solve problems | Creativity and imagination; critical thinking and problem solving |
 | Delight | Learners find joy and wellbeing in learning | Wellbeing (pertinent and contemporary issues) |
 | Expertise | Learners master skills and knowledge | Subject learning outcomes; digital literacy |
+
+---
+
+## How each indicator is measured
+
+| Level | Indicator | Definition | Source | How often | Target |
+|---|---|---|---|---|---|
+| Leaders | Fellows who led a full design test | The Fellow took their sprint team through prototype, test with users and a documented change; a coach saw it at least once | Coach observation | Each sprint | 18 of 24 |
+| Leaders | Feedback turnaround | Median working days from a Fellow's facilitation to written feedback against the standard | Feedback log | Monthly | 5 days or less |
+| Teachers | Completion | Attended every training day, from signed registers | Attendance registers | Each training | 85% |
+| Teachers | Using the tool at 8 weeks | Used the tool in a lesson in the two weeks before the follow-up call, reported by the head teacher and checked by calling back a sample of teachers | Head-teacher call, teacher call-back | 8 weeks after training | 65% |
+| Teachers | Recent use, self-reported | Teacher says they used the tool in a lesson this week or last week | Teacher check-in | Every two weeks | 70% |
+| Teachers | Cost per teacher using the tool | Total delivery cost divided by teachers using the tool at 8 weeks | Finance ledger and use data | Each term | KES 6,000 or less |
+| Schools | Adoption stage | Explore, experiment, embed or spread, scored by the school design team against the adoption rubric | Design team review | Each term | 4 of 6 schools embedding by Term 3, 2027 |
+| Learners | North Star outcome evident | Share of observed lessons where the observer records clear evidence (at least two of three look-fors) of the outcome | Structured classroom observation | Each term | Agency 55% by Term 3, 2027 |
+| Learners | Meeting or exceeding expectations | Share of learners at Meeting or Exceeding Expectations in CBE school-based assessment, from school records | School-based assessment records | Each term | 60% |
+| Learners | Class make-up | Girls, boys and learners with disabilities in the classes of teachers who check in | Teacher check-in | Every two weeks | Reported, not targeted |
+| System | Event commitments followed up | A commitment with a named owner that is done or under way at the follow-up call | Event follow-up calls | One term after each event | 70% |
+
+---
+
+## Expert review, round two
+
+After the first version went live, each lens reviewed it again. Every gap below is now built into the portal.
+
+| Lens | Gap found | What changed |
+|---|---|---|
+| Whole child and CBE | Expertise rested on classroom observation alone, with no link to CBE assessment | Schools now report the share of learners meeting or exceeding expectations in school-based assessment |
+| Inclusion | No view of girls, boys or learners with disabilities | Teacher check-ins record class make-up, and InnovatED records women among teachers completing |
+| Teachers' voice | Teachers couldn't add anything; use at 8 weeks relied on head teachers' phone reports | A two-minute teacher check-in, in English or Kiswahili, sits beside the head-teacher report |
+| M&E | Indicators had no written definitions or targets | Every indicator now has a definition, source, frequency and target, and targets show on the dashboard |
+| M&E | No audit trail on submissions | Each submission keeps a dated history: submitted, returned, resubmitted, verified |
+| Safeguarding | One consent box covered adults and learners alike, and there was no privacy notice | Learner quotes need caregiver consent and the learner's own agreement, name phrases are blocked, and a privacy notice explains what is held |
+| Programme operations | Decisions weren't tied to prompts, and nobody was reminded to look again | Decisions link to their prompt, overdue reviews are flagged, and reviews can be marked done |
+| Finance | No cost per learner | InnovatED shows an estimated cost per learner reached |
+| Donor relations | The report showed successes only, with no data download | The donor report adds what we're learning and a CSV of verified figures |
+| Accessibility | Some charts could only be read by hovering | Key charts have a table view, and counties can be selected with a keyboard |
+| Counties and policy | County officers couldn't see their own county | Select a county on the map to open its profile |
+
+**Still to come**
+
+- A shared database with sign-in, so everyone sees the same data (left for the next stage on purpose; the data model is ready for it)
+- The full interface in Kiswahili (the teacher check-in already is)
+- Pulling assessment results straight from school records instead of entering them
 
 Sources: The METIS Way Toolkit; metiscollective.org; the Metis North Star as described by Yale School of Management (2022); Kenya Basic Education Curriculum Framework; Guskey's five levels of professional development evaluation.

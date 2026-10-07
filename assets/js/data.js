@@ -38,12 +38,17 @@ window.METIS_CONFIG = (function () {
     { id: "S6", label: "Partner School 6", type: "Public primary and junior school", county: "Kajiado", learners: 1392, stage: "Experiment" }
   ];
   const STAGES = ["Explore", "Experiment", "Embed", "Spread"];
+  const TARGETS = { use8: 0.65, recentUse: 0.70, commitments: 0.70, feedbackDays: 5, costPerActive: 6000, agency: 55, meeting: 60 };
+  const LAST_USED = ["This week", "Last week", "2 to 4 weeks ago", "More than a month ago", "Not yet"];
+  const SUPPORT = ["None right now", "Coaching visit", "Help with the tool", "Peer group", "Materials"];
+  const GRADE_BANDS = ["ECDE", "Grades 1 to 3", "Grades 4 to 6", "Grades 7 to 9"];
   const PILOT_STAGES = ["Idea", "Prototype", "Pilot", "Evidence", "Scale"];
 
   const ROLES = [
     { id: "staff", label: "Program staff", hint: "Lead Coaches, Codifier, Associates and partners: add data and see everything internal" },
     { id: "me", label: "M&E", hint: "Check, verify or return submitted data" },
     { id: "lead", label: "Decision maker", hint: "Programs Manager and Director: act on decision prompts and record decisions" },
+    { id: "teacher", label: "Teacher", hint: "Trained teachers: send a two-minute check-in about your class" },
     { id: "donor", label: "Donor", hint: "Funders and partners: verified data only" }
   ];
 
@@ -58,6 +63,7 @@ window.METIS_CONFIG = (function () {
         { key: "delivered_by", label: "Delivered by", type: "select", options: ["Metis", "Partner"], required: true, example: "Metis" },
         { key: "registered", label: "Teachers registered", type: "int", required: true, min: 0, example: 30 },
         { key: "completed", label: "Teachers completed", type: "int", required: true, min: 0, example: 27 },
+        { key: "female_completed", label: "Women among those completed", type: "int", required: false, min: 0, example: 17 },
         { key: "confidence", label: "Confidence on last day (1 to 5)", type: "num", required: true, min: 1, max: 5, example: 4.5 },
         { key: "using_pct", label: "Using the tool at 8 weeks (%)", type: "pct", required: false, missingExcl: "use", rangeExcl: "use", example: 68 },
         { key: "cost_per_completer", label: "Cost per teacher completed (KES)", type: "int", required: true, min: 0, example: 3800 }
@@ -73,7 +79,8 @@ window.METIS_CONFIG = (function () {
         { key: "belonging_pct", label: "Belonging evident (% of lessons)", type: "pct", required: true, example: 65 },
         { key: "creativity_pct", label: "Creativity evident (% of lessons)", type: "pct", required: true, example: 50 },
         { key: "delight_pct", label: "Delight evident (% of lessons)", type: "pct", required: true, example: 60 },
-        { key: "expertise_pct", label: "Expertise evident (% of lessons)", type: "pct", required: true, example: 55 }
+        { key: "expertise_pct", label: "Expertise evident (% of lessons)", type: "pct", required: true, example: 55 },
+        { key: "meeting_pct", label: "Learners meeting or exceeding expectations, school-based assessment (%)", type: "pct", required: false, example: 55 }
       ]
     },
     fellow_pulse: {
@@ -119,6 +126,24 @@ window.METIS_CONFIG = (function () {
         { key: "commitments_followed", label: "Commitments followed up within a term", type: "int", required: true, min: 0, example: 25 }
       ]
     },
+    teacher_checkin: {
+      label: "Teacher check-ins", program: "innovated", who: "Teachers", when: "Every two weeks", unit: "check-in",
+      fields: [
+        { key: "school", label: "School or training site code", type: "text", required: true, example: "A" },
+        { key: "county", label: "County", type: "select", options: COUNTIES, required: true, example: "Nakuru" },
+        { key: "grade_band", label: "Class taught", type: "select", options: GRADE_BANDS, required: true, example: "Grades 4 to 6" },
+        { key: "class_size", label: "Learners in the class", type: "int", required: true, min: 1, max: 150, example: 52 },
+        { key: "girls", label: "Girls", type: "int", required: false, min: 0, example: 27 },
+        { key: "boys", label: "Boys", type: "int", required: false, min: 0, example: 25 },
+        { key: "with_disability", label: "Learners with disabilities", type: "int", required: false, min: 0, example: 2 },
+        { key: "last_used", label: "Last used the tool in a lesson", type: "select", options: LAST_USED, required: true, example: "This week" },
+        { key: "used_for", label: "Used it for", type: "text", required: false, example: "Lesson plan; Assessment" },
+        { key: "minutes_saved", label: "Minutes saved this week", type: "num", required: false, min: 0, max: 900, example: 120 },
+        { key: "outcomes_seen", label: "North Star outcomes seen this week", type: "text", required: false, example: "agency; belonging" },
+        { key: "what_worked", label: "One thing that worked", type: "text", required: false, example: "Pair talk before writing" },
+        { key: "support", label: "Support that would help", type: "select", options: SUPPORT, required: true, example: "None right now" }
+      ]
+    },
     testbed_pilot: {
       label: "EdTech Testbed pilot update", program: "testbed", who: "Testbed lead and partners",
       when: "Each term", unit: "pilot",
@@ -135,13 +160,16 @@ window.METIS_CONFIG = (function () {
 
   const R = (site, county, by, reg, comp, conf, use, cost) =>
     ({ site, county, delivered_by: by, registered: reg, completed: comp, confidence: conf, using_pct: use, cost_per_completer: cost });
-  const O = (school, lessons, a, b, c, d, e) =>
-    ({ school, lessons_observed: lessons, agency_pct: a, belonging_pct: b, creativity_pct: c, delight_pct: d, expertise_pct: e });
+  const O = (school, lessons, a, b, c, d, e, meeting) =>
+    ({ school, lessons_observed: lessons, agency_pct: a, belonging_pct: b, creativity_pct: c, delight_pct: d, expertise_pct: e, meeting_pct: meeting });
+  const WOMEN = { A: 17, B: 12, C: 13, D: 19, E: 9, F: 11, G: 10, H: 8, I: 2, J: 13, K: 12, L: 4, M: 14, N: 13 };
+  const T = (school, county, grade_band, class_size, last_used, used_for, minutes_saved, outcomes_seen, what_worked, support, girls, boys, with_disability) =>
+    ({ school, county, grade_band, class_size, girls, boys, with_disability, last_used, used_for, minutes_saved, outcomes_seen, what_worked, support });
   const F = (fellow, org_type, county, status, attendance_pct, relevance, belonging, hours, led, sponsor, milestones_done, learner) =>
     ({ fellow, org_type, county, status, attendance_pct, relevance, belonging, hours, led_full_test: led, sponsor_active: sponsor, milestones_done, learner_data: learner });
 
   const seed = {
-    version: 1,
+    version: 2,
     role: "staff",
     submissions: [
       {
@@ -156,29 +184,29 @@ window.METIS_CONFIG = (function () {
           R("I", "Machakos", "Metis", 3, 3, 5.0, 100, 9800), R("J", "Kisumu", "Metis", 27, 24, 4.2, 44, 5100),
           R("K", "Kisumu", "Partner", 30, 21, 4.0, 130, 2900), R("L", "Turkana", "Metis", 12, 11, 4.4, 55, 12400),
           R("M", "Kiambu", "Metis", 18, 22, 4.5, 61, 3800), R("N", "Nakuru", "Partner", 31, 20, 3.7, 38, 2400)
-        ]
+        ].map(r => ({ ...r, female_completed: WOMEN[r.site] }))
       },
       {
         id: "sub-sch-t1", dataset: "school_obs", term: "2026-T1", title: "Term 1 classroom observations, six partner schools",
         submittedBy: "Lead Coach (Schools)", submittedAt: "2026-04-06", status: "verified", reviewedBy: "M&E", reviewedAt: "2026-04-14", note: "",
-        rows: [O("S1", 10, 38, 60, 44, 55, 50), O("S2", 9, 30, 55, 40, 50, 48), O("S3", 8, 42, 66, 50, 61, 52),
-          O("S4", 9, 28, 52, 38, 49, 47), O("S5", 6, 35, 64, 46, 70, 40), O("S6", 11, 26, 50, 36, 47, 45)]
+        rows: [O("S1", 10, 38, 60, 44, 55, 50, 51), O("S2", 9, 30, 55, 40, 50, 48, 46), O("S3", 8, 42, 66, 50, 61, 52, 55),
+          O("S4", 9, 28, 52, 38, 49, 47, 43), O("S5", 6, 35, 64, 46, 70, 40, 40), O("S6", 11, 26, 50, 36, 47, 45, 41)]
       },
       {
         id: "sub-sch-t2", dataset: "school_obs", term: "2026-T2", title: "Term 2 classroom observations, six partner schools",
         submittedBy: "Lead Coach (Schools)", submittedAt: "2026-08-03", status: "verified", reviewedBy: "M&E", reviewedAt: "2026-08-10", note: "",
-        rows: [O("S1", 12, 44, 66, 50, 60, 55), O("S2", 10, 36, 61, 45, 56, 52), O("S3", 9, 48, 72, 55, 66, 57),
-          O("S4", 10, 33, 58, 43, 54, 51), O("S5", 7, 39, 69, 51, 74, 44), O("S6", 12, 31, 57, 41, 53, 49)]
+        rows: [O("S1", 12, 44, 66, 50, 60, 55, 54), O("S2", 10, 36, 61, 45, 56, 52, 49), O("S3", 9, 48, 72, 55, 66, 57, 58),
+          O("S4", 10, 33, 58, 43, 54, 51, 46), O("S5", 7, 39, 69, 51, 74, 44, 42), O("S6", 12, 31, 57, 41, 53, 49, 44)]
       },
       {
         id: "sub-sch-t3a", dataset: "school_obs", term: "2026-T3", title: "Term 3 classroom observations, Schools 1 to 4",
         submittedBy: "Lead Coach (Schools)", submittedAt: "2026-09-25", status: "verified", reviewedBy: "M&E", reviewedAt: "2026-09-30", note: "",
-        rows: [O("S1", 11, 52, 74, 57, 67, 61), O("S2", 10, 41, 66, 49, 61, 56), O("S3", 9, 55, 78, 61, 71, 62), O("S4", 10, 38, 63, 47, 58, 55)]
+        rows: [O("S1", 11, 52, 74, 57, 67, 61, 58), O("S2", 10, 41, 66, 49, 61, 56, 52), O("S3", 9, 55, 78, 61, 71, 62, 61), O("S4", 10, 38, 63, 47, 58, 55, 49)]
       },
       {
         id: "sub-sch-t3b", dataset: "school_obs", term: "2026-T3", title: "Term 3 classroom observations, Schools 5 and 6",
         submittedBy: "Lead Coach (Schools)", submittedAt: "2026-10-02", status: "submitted", note: "",
-        rows: [O("S5", 4, 44, 73, 55, 79, 47), O("S6", 11, 36, 62, 45, 58, 53)]
+        rows: [O("S5", 4, 44, 73, 55, 79, 47, 44), O("S6", 11, 36, 62, 45, 58, 53, 46)]
       },
       {
         id: "sub-fel-t3", dataset: "fellow_pulse", term: "2026-T3", title: "Fellowship Sprint 3 progress and pulse",
@@ -225,6 +253,45 @@ window.METIS_CONFIG = (function () {
         rows: [
           { event: "KSE Term 1: Whole child in large classes", county: "Nairobi", teachers: 64, school_leaders: 38, county_officials: 9, funders: 7, fellows: 22, commitments_made: 41, commitments_followed: 26 },
           { event: "KSE Term 2: Measuring what matters", county: "Nakuru", teachers: 72, school_leaders: 41, county_officials: 12, funders: 9, fellows: 24, commitments_made: 48, commitments_followed: 29 }
+        ]
+      },
+      {
+        id: "sub-teach-t3", dataset: "teacher_checkin", term: "2026-T3", title: "Teacher check-ins, Term 3 (weeks 3 to 6)",
+        submittedBy: "Teachers (check-in)", submittedAt: "2026-09-26", status: "verified", reviewedBy: "M&E", reviewedAt: "2026-09-30", note: "",
+        rows: [
+          T("A", "Nakuru", "Grades 4 to 6", 52, "This week", "Lesson plan; Assessment", 180, "agency; belonging; expertise", "Pair talk before writing", "None right now", 27, 25, 2),
+          T("A", "Nakuru", "Grades 1 to 3", 61, "Last week", "Lesson plan", 120, "belonging; delight", "Counting games outside", "Coaching visit", 31, 30, 1),
+          T("C", "Nakuru", "Grades 7 to 9", 48, "This week", "Scheme of work; Assessment", 240, "creativity; expertise", "Learners designed their own quiz", "None right now", 22, 26, 1),
+          T("D", "Kiambu", "Grades 4 to 6", 55, "This week", "Lesson plan; Teaching strategy", 150, "agency; creativity; delight", "Choice board for group work", "Peer group", 28, 27, 3),
+          T("D", "Kiambu", "Grades 1 to 3", 58, "Last week", "Lesson plan", 90, "belonging; delight", "Morning circle", "None right now", 30, 28, 2),
+          T("B", "Nakuru", "Grades 4 to 6", 64, "2 to 4 weeks ago", "Lesson plan", 60, "belonging", "Group roles", "Help with the tool", 33, 31, 1),
+          T("N", "Nakuru", "Grades 7 to 9", 57, "More than a month ago", "", "", "expertise", "", "Coaching visit", 29, 28, 0),
+          T("E", "Kiambu", "Grades 1 to 3", 66, "Not yet", "", "", "delight", "Songs for phonics", "Help with the tool", 34, 32, 2),
+          T("F", "Kiambu", "Grades 4 to 6", 59, "2 to 4 weeks ago", "Assessment", 45, "expertise", "Exit tickets", "Coaching visit", 30, 29, 1),
+          T("G", "Machakos", "Grades 4 to 6", 47, "This week", "Lesson plan; Assessment", 200, "agency; expertise", "Learners set weekly goals", "None right now", 24, 23, 2),
+          T("G", "Machakos", "ECDE", 38, "Last week", "Teaching strategy", 100, "delight; creativity", "Story corner", "Materials", 20, 18, 1),
+          T("J", "Kisumu", "Grades 7 to 9", 62, "Not yet", "", "", "", "", "Help with the tool", 31, 31, 1),
+          T("J", "Kisumu", "Grades 4 to 6", 68, "2 to 4 weeks ago", "Lesson plan", 30, "belonging", "Buddy reading", "Coaching visit", 35, 33, 2),
+          T("L", "Turkana", "Grades 1 to 3", 74, "Last week", "Lesson plan; Teaching strategy", 90, "belonging; delight", "Starting lessons in the home language", "Materials", 36, 38, 3),
+          T("S1", "Nakuru", "Grades 4 to 6", 50, "This week", "Lesson plan", 160, "agency; belonging; creativity", "Class garden planning", "None right now", 26, 24, 2),
+          T("S1", "Nakuru", "Grades 7 to 9", 46, "This week", "Scheme of work", 210, "agency; expertise", "Debate club", "None right now", 23, 23, 1),
+          T("S2", "Kiambu", "Grades 1 to 3", 57, "Last week", "Lesson plan", 80, "belonging; delight", "Name songs at the door", "Peer group", 29, 28, 2),
+          T("S3", "Nairobi", "Grades 4 to 6", 42, "This week", "Lesson plan; Assessment", 190, "creativity; delight; expertise", "Bottle-top shop for maths", "None right now", 22, 20, 1),
+          T("S3", "Nairobi", "ECDE", 35, "Last week", "Teaching strategy", 70, "delight; belonging", "Free play with loose parts", "None right now", 18, 17, 1),
+          T("S4", "Machakos", "Grades 4 to 6", 60, "2 to 4 weeks ago", "Lesson plan", 40, "belonging", "Group roles", "Coaching visit", 31, 29, 2),
+          T("S5", "Kisumu", "ECDE", 44, "This week", "Teaching strategy", 110, "delight; creativity; agency", "Learners choose the song", "Peer group", 23, 21, 2),
+          T("S6", "Kajiado", "Grades 4 to 6", 65, "Last week", "Lesson plan", 95, "belonging; expertise", "Pair talk", "Coaching visit", 33, 32, 2),
+          T("S6", "Kajiado", "Grades 1 to 3", 70, "This week", "Lesson plan; Teaching strategy", 130, "delight; belonging", "Counting with stones", "Materials", 36, 34, 4),
+          T("C", "Nakuru", "Grades 4 to 6", 53, "Not yet", "", "", "belonging", "", "Help with the tool", 27, 26, 1)
+        ]
+      },
+      {
+        id: "sub-teach-t3b", dataset: "teacher_checkin", term: "2026-T3", title: "Teacher check-ins, Term 3 (week 7)",
+        submittedBy: "Teachers (check-in)", submittedAt: "2026-10-05", status: "submitted", note: "",
+        rows: [
+          T("K", "Kisumu", "Grades 4 to 6", 63, "Last week", "Lesson plan", 75, "belonging; agency", "Learners lead the recap", "None right now", 32, 31, 1),
+          T("H", "Machakos", "Grades 1 to 3", 58, "Not yet", "", "", "delight", "", "Help with the tool", 30, 28, 2),
+          T("S4", "Machakos", "Grades 7 to 9", 51, "This week", "Assessment", 120, "expertise; agency", "Peer marking with a rubric", "None right now", 25, 26, 1)
         ]
       },
       {
@@ -277,7 +344,7 @@ window.METIS_CONFIG = (function () {
     people: [
       ["Learners", "To be seen as more than an exam score; to feel safe, heard and able to shape their learning", "North Star observations; anonymous, consented learner voice"],
       ["Caregivers", "To know what changes for their child", "Caregiver voices; event participation"],
-      ["Teachers", "Tools that save time in large classes; follow-up after training", "InnovatED use at eight weeks, not just attendance"],
+      ["Teachers", "Tools that save time in large classes; follow-up after training; a say in what gets reported", "A two-minute check-in in English or Kiswahili, plus InnovatED use at eight weeks"],
       ["School leaders and design teams", "To see whole-child practice spreading across the staff", "Adoption stage and North Star trends per school"],
       ["Fellows", "A clear standard, timely feedback, visible progress", "Sprint, milestone and feedback-turnaround tracking"],
       ["Coaches, Codifier, Associates, partners", "Fast data entry that doesn't duplicate reporting", "One Add data flow with templates and checks at entry"],
@@ -313,6 +380,37 @@ window.METIS_CONFIG = (function () {
       ["For the system", "A Kenyan Whole Child Learning playbook built from real school journeys, shared through Knowledge Sharing Events."],
       ["For donors and partners", "Honest, verified reporting on time, with sample sizes, sources and children's voices used with care."]
     ],
+    indicators: [
+      ["Leaders", "Fellows who led a full design test", "The Fellow took their sprint team through prototype, test with users and a documented change; a coach saw it at least once", "Coach observation", "Each sprint", "18 of 24"],
+      ["Leaders", "Feedback turnaround", "Median working days from a Fellow's facilitation to written feedback against the standard", "Feedback log", "Monthly", "5 days or less"],
+      ["Teachers", "Completion", "Attended every training day, from signed registers", "Attendance registers", "Each training", "85%"],
+      ["Teachers", "Using the tool at 8 weeks", "Used the tool in a lesson in the two weeks before the follow-up call, reported by the head teacher and checked by calling back a sample of teachers", "Head-teacher call, teacher call-back", "8 weeks after training", "65%"],
+      ["Teachers", "Recent use, self-reported", "Teacher says they used the tool in a lesson this week or last week", "Teacher check-in", "Every two weeks", "70%"],
+      ["Teachers", "Cost per teacher using the tool", "Total delivery cost divided by teachers using the tool at 8 weeks", "Finance ledger and use data", "Each term", "KES 6,000 or less"],
+      ["Schools", "Adoption stage", "Explore, experiment, embed or spread, scored by the school design team against the adoption rubric", "Design team review", "Each term", "4 of 6 schools embedding by Term 3, 2027"],
+      ["Learners", "North Star outcome evident", "Share of observed lessons where the observer records clear evidence (at least two of three look-fors) of the outcome", "Structured classroom observation", "Each term", "Agency 55% by Term 3, 2027"],
+      ["Learners", "Meeting or exceeding expectations", "Share of learners at Meeting or Exceeding Expectations in CBE school-based assessment, from school records", "School-based assessment records", "Each term", "60%"],
+      ["Learners", "Class make-up", "Girls, boys and learners with disabilities in the classes of teachers who check in", "Teacher check-in", "Every two weeks", "Reported, not targeted"],
+      ["System", "Event commitments followed up", "A commitment with a named owner that is done or under way at the follow-up call", "Event follow-up calls", "One term after each event", "70%"]
+    ],
+    review2: [
+      ["Whole child and CBE", "Expertise rested on classroom observation alone, with no link to CBE assessment", "Schools now report the share of learners meeting or exceeding expectations in school-based assessment"],
+      ["Inclusion", "No view of girls, boys or learners with disabilities", "Teacher check-ins record class make-up, and InnovatED records women among teachers completing"],
+      ["Teachers' voice", "Teachers couldn't add anything; use at 8 weeks relied on head teachers' phone reports", "A two-minute teacher check-in, in English or Kiswahili, sits beside the head-teacher report"],
+      ["M&E", "Indicators had no written definitions or targets", "Every indicator now has a definition, source, frequency and target, and targets show on the dashboard"],
+      ["M&E", "No audit trail on submissions", "Each submission keeps a dated history: submitted, returned, resubmitted, verified"],
+      ["Safeguarding", "One consent box covered adults and learners alike, and there was no privacy notice", "Learner quotes need caregiver consent and the learner's own agreement, name phrases are blocked, and a privacy notice explains what is held"],
+      ["Programme operations", "Decisions weren't tied to prompts, and nobody was reminded to look again", "Decisions link to their prompt, overdue reviews are flagged, and reviews can be marked done"],
+      ["Finance", "No cost per learner", "InnovatED shows an estimated cost per learner reached"],
+      ["Donor relations", "The report showed successes only, with no data download", "The donor report adds what we're learning and a CSV of verified figures"],
+      ["Accessibility", "Some charts could only be read by hovering", "Key charts have a table view, and counties can be selected with a keyboard"],
+      ["Counties and policy", "County officers couldn't see their own county", "Select a county on the map to open its profile"]
+    ],
+    next: [
+      "A shared database with sign-in, so everyone sees the same data (left for the next stage on purpose; the data model is ready for it)",
+      "The full interface in Kiswahili (the teacher check-in already is)",
+      "Pulling assessment results straight from school records instead of entering them"
+    ],
     council: [
       ["Whole child learning and CBE", "Measure all five North Star outcomes and speak CBE's language", "North Star strip; outcomes mapped to CBE competencies"],
       ["M&E and data quality", "No number without its n, source and check", "Checks at entry, review queue, verified-only figures"],
@@ -326,5 +424,5 @@ window.METIS_CONFIG = (function () {
     ]
   };
 
-  return { version: 1, COUNTIES, TERMS, NORTH_STAR, PROGRAMS, SCHOOLS, STAGES, PILOT_STAGES, ROLES, DATASETS, DESIGN_MAP, seed };
+  return { version: 2, COUNTIES, TERMS, NORTH_STAR, PROGRAMS, SCHOOLS, STAGES, PILOT_STAGES, ROLES, DATASETS, DESIGN_MAP, TARGETS, LAST_USED, SUPPORT, GRADE_BANDS, seed };
 })();

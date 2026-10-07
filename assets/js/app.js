@@ -31,7 +31,10 @@
   const uid = p => p + "-" + Math.random().toString(36).slice(2, 8);
   const roleOf = () => C.ROLES.find(r => r.id === state.role) || C.ROLES[0];
   const isDonor = () => state.role === "donor";
-  const can = { add: () => state.role !== "donor", verify: () => state.role === "me", decide: () => state.role === "lead" };
+  const isTeacher = () => state.role === "teacher";
+  const can = { add: () => !["donor", "teacher"].includes(state.role), verify: () => state.role === "me", decide: () => state.role === "lead", review: () => ["staff", "me", "lead"].includes(state.role) };
+  const CURRENT_TERM = C.TERMS[C.TERMS.length - 1].id;
+  const NAME_PHRASE = /\b(my name is|naitwa|jina langu ni)\b/i;
   const prettyDate = d => { const x = new Date(d + "T00:00:00"); return isNaN(x) ? esc(d) : x.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
 
   /* ---------- data checks ---------- */
@@ -70,6 +73,16 @@
       if (dsKey === "school_obs") {
         const l = Number(row.lessons_observed);
         if (isFinite(l) && l < 5) issues.push({ level: "flag", excl: null, msg: `Only ${l} lessons observed, so treat this school's figures as indicative` });
+      }
+      const given = v => v !== "" && v !== null && v !== undefined;
+      if (dsKey === "innovated_sites" && given(row.female_completed) && Number(row.female_completed) > Number(row.completed)) {
+        issues.push({ level: "flag", excl: null, msg: "More women recorded than teachers who completed" });
+      }
+      if (dsKey === "teacher_checkin") {
+        const g = Number(row.girls), b = Number(row.boys), size = Number(row.class_size);
+        if (given(row.girls) && given(row.boys) && isFinite(g) && isFinite(b) && isFinite(size) && g + b !== size) issues.push({ level: "flag", excl: null, msg: `Girls and boys add up to ${g + b}, not the class size of ${size}` });
+        if (given(row.with_disability) && Number(row.with_disability) > size) issues.push({ level: "flag", excl: null, msg: "More learners with disabilities than learners in the class" });
+        if (NAME_PHRASE.test(String(row.what_worked || ""))) issues.push({ level: "fail", excl: "row", msg: "The note looks like it names someone. Remove the name" });
       }
       if (dsKey === "event_attendance" && Number(row.commitments_followed) > Number(row.commitments_made)) {
         issues.push({ level: "fail", excl: "row", msg: "More commitments followed up than were made" });
@@ -125,10 +138,12 @@
     const useCompleted = sum(useI, x => +x.row.completed), useRegistered = sum(useI, x => +x.row.registered);
     const users = sum(useI, x => x.row.completed * x.row.using_pct / 100);
     const useCost = sum(useI, x => x.row.completed * x.row.cost_per_completer);
+    const wRows = base.filter(x => x.row.female_completed !== "" && x.row.female_completed != null && +x.row.female_completed <= +x.row.completed);
     return {
       base, useI, sites: base.length, useSites: useI.length, registered, completed, completion: completed / registered,
       costPerCompleter: cost / completed, useCompleted, useRegistered, users, usePct: users / useCompleted,
-      per100: users / useRegistered * 100, costPerActive: useCost / users, counties: new Set(base.map(x => x.row.county)).size
+      per100: users / useRegistered * 100, costPerActive: useCost / users, counties: new Set(base.map(x => x.row.county)).size,
+      women: wRows.length ? sum(wRows, x => +x.row.female_completed) / sum(wRows, x => +x.row.completed) : NaN, womenSites: wRows.length
     };
   }
   function innovated() {
@@ -204,6 +219,43 @@
     return { total, verified, pending: pending().length, returned: state.submissions.filter(s => s.status === "returned").length, rows, held, flagged };
   }
 
+  /* ---------- teacher check-ins ---------- */
+  const RECENT = ["This week", "Last week"];
+  function teacherReport() {
+    const term = latestTerm("teacher_checkin");
+    const rows = term ? verifiedItems("teacher_checkin", term).filter(x => !x.res.exclRow).map(x => x.row) : [];
+    const given = v => v !== "" && v !== null && v !== undefined && isFinite(Number(v));
+    const mins = rows.filter(r => given(r.minutes_saved) && +r.minutes_saved > 0).map(r => +r.minutes_saved);
+    const mk = rows.filter(r => given(r.girls) && given(r.boys));
+    return {
+      term, rows, n: rows.length,
+      recent: rows.filter(r => RECENT.includes(r.last_used)).length,
+      lastUsed: C.LAST_USED.map(o => [o, rows.filter(r => r.last_used === o).length]),
+      support: C.SUPPORT.map(o => [o, rows.filter(r => r.support === o).length]),
+      minutes: median(mins), minutesN: mins.length,
+      outcomes: C.NORTH_STAR.map(o => [o, rows.filter(r => String(r.outcomes_seen || "").toLowerCase().split(/[;,]/).map(x => x.trim()).includes(o.key)).length]),
+      girls: sum(mk, r => +r.girls), boys: sum(mk, r => +r.boys),
+      swd: sum(rows.filter(r => given(r.with_disability)), r => +r.with_disability), learners: sum(rows, r => +r.class_size || 0)
+    };
+  }
+  function schoolMeeting() {
+    const t = latestTerm("school_obs");
+    if (!t) return null;
+    const rows = verifiedItems("school_obs", t).filter(x => !x.res.exclRow && x.row.meeting_pct !== "" && x.row.meeting_pct != null).map(x => x.row);
+    return rows.length ? { term: t, value: mean(rows.map(r => +r.meeting_pct)), n: rows.length } : null;
+  }
+
+  /* ---------- audit trail and decisions ---------- */
+  function historyOf(sub) {
+    if (Array.isArray(sub.history) && sub.history.length) return sub.history;
+    const h = [{ at: sub.submittedAt, who: sub.submittedBy, what: "Submitted" }];
+    if (sub.reviewedAt) h.push({ at: sub.reviewedAt, who: sub.reviewedBy || "M&E", what: sub.status === "returned" ? "Returned with a note" : "Verified" });
+    return h;
+  }
+  function logEvent(sub, what, who) { sub.history = historyOf(sub).slice(); sub.history.push({ at: today(), who: who || roleOf().label, what }); }
+  const isDue = d => !d.reviewedOn && d.review && d.review <= today();
+  const decisionFor = id => state.decisions.find(d => d.promptId === id && !d.reviewedOn);
+
   /* ---------- decision prompts ---------- */
   function prompts() {
     const list = [], onTrack = [];
@@ -215,7 +267,8 @@
         title: `${low.length} partner-led InnovatED sites are below 45% use at eight weeks`,
         evidence: low.map(x => `Site ${x.row.site}, ${x.row.county}: ${x.row.using_pct}%`).join(" · "),
         rule: "Agreed rule: partner sites below 45% for two cycles in a row move to Metis-led delivery or a different partner. This is the first cycle.",
-        options: ["Pilot Metis co-delivery plus two follow-ups at these sites next term", "Wait one more cycle, then apply the rule", "Move the lowest site now"]
+        options: ["Pilot Metis co-delivery plus two follow-ups at these sites next term", "Wait one more cycle, then apply the rule", "Move the lowest site now"],
+        learn: "Partner-led training is turning fewer trained teachers into regular users than Metis-led training. Next term we're testing Metis co-delivery and two follow-up visits at those sites."
       });
       const small = m.base.filter(x => +x.row.registered < 15);
       if (small.length) list.push({
@@ -223,14 +276,16 @@
         title: `${small.length} InnovatED sessions had fewer than 15 teachers`,
         evidence: small.map(x => `Site ${x.row.site}, ${x.row.county}: ${x.row.registered} registered, ${kes(x.row.cost_per_completer)} per completer`).join(" · "),
         rule: "Agreed rule: cluster nearby schools so every session has at least 15 teachers. Remote counties keep their sessions for equity, with local co-facilitators to cut travel.",
-        options: ["Cluster schools for the next cohort", "Train two local co-facilitators in Turkana", "Keep as is and record the equity reason"]
+        options: ["Cluster schools for the next cohort", "Train two local co-facilitators in Turkana", "Keep as is and record the equity reason"],
+        learn: "Very small and remote sessions cost far more per teacher. We're grouping nearby schools and training local co-facilitators, so remote counties keep their place."
       });
       if (m.heldBack.length) list.push({
         id: "data-held", sev: "watch", route: "review",
         title: `${m.heldBack.length} InnovatED sites have data held back by checks`,
         evidence: m.heldBack.map(x => `Site ${x.row.site}: ${x.res.issues.filter(i => i.excl).map(i => i.msg).join("; ")}`).join(" · "),
         rule: "Rows that fail checks stay out of the affected figures until the source registers are re-checked.",
-        options: ["Ask the delivering team to re-check registers", "Call back a sample of teachers at these sites"]
+        options: ["Ask the delivering team to re-check registers", "Call back a sample of teachers at these sites"],
+        learn: "Some site records failed our checks. They stay out of these figures until the registers have been re-checked."
       });
     }
     const f = fellowship();
@@ -263,7 +318,20 @@
         title: `${low.name} is the lowest North Star outcome in partner schools (${Math.round(low.value)}%)`,
         evidence: `${low.name} was evident in ${Math.round(low.value)}% of observed lessons in ${termLabel(ns.term)}, across ${ns.schools.length} schools.`,
         rule: "Agreed rule: each term, school coaching focuses on the lowest North Star outcome.",
-        options: [`Make ${low.name.toLowerCase()} next term's coaching focus`, "Share practice from the school with the highest score"]
+        options: [`Make ${low.name.toLowerCase()} next term's coaching focus`, "Share practice from the school with the highest score"],
+        learn: `${low.name} is the North Star outcome children show least often, so it's the focus of next term's school coaching.`
+      });
+    }
+    const tr = teacherReport();
+    if (tr.n) {
+      const visits = tr.support.find(x => x[0] === "Coaching visit")[1], help = tr.support.find(x => x[0] === "Help with the tool")[1];
+      if (visits + help >= 5) list.push({
+        id: "teacher-support", sev: "watch", route: "programs/innovated",
+        title: `${visits + help} teachers asked for support in their check-ins`,
+        evidence: `${visits} asked for a coaching visit and ${help} for help with the tool, out of ${tr.n} check-ins in ${termLabel(tr.term)}.`,
+        rule: "Agreed rule: every teacher who asks for support hears back within a week, and coaches plan visits around the requests.",
+        options: ["Schedule coaching visits this month", "Run a short tool clinic for teachers asking for help"],
+        learn: `In their own check-ins, ${visits + help} of ${tr.n} teachers asked for more support. Coaches are planning visits and a short tool clinic around those requests.`
       });
     }
     const old = pending().filter(s => (Date.now() - new Date(s.submittedAt + "T00:00:00")) / 864e5 > 3);
@@ -309,12 +377,47 @@
       text: `${fmt(e.attendees)} people took part in ${e.rows.length} Knowledge Sharing Events, including ${e.county} county education officials, and ${pct(e.followed / e.made)} of the commitments made at those events were followed up within a term.`,
       source: "Event registers and follow-up calls, checked by M&E", n: `n = ${e.made} commitments`
     });
+    const tr = teacherReport();
+    if (tr.n) out.push({
+      program: "InnovatED, teachers' own reports",
+      text: `In ${termLabel(tr.term)} check-ins, ${tr.recent} of ${tr.n} teachers said they had used the InnovatED tool in a lesson in the past two weeks${tr.minutesN ? `, and those who gave a figure reported saving a median of ${Math.round(tr.minutes)} minutes that week` : ""}.`,
+      source: "Teacher check-ins (self-reported), checked by M&E", n: `n = ${tr.n} check-ins`
+    });
     testbed().strong.forEach(p => out.push({
       program: "Kenya EdTech Testbed",
       text: `In the EdTech Testbed, the "${p.pilot}" pilot ran in ${p.schools} schools with ${fmt(p.learners)} learners. Result: ${p.result.charAt(0).toLowerCase() + p.result.slice(1)}.`,
       source: `${p.evidence} design, checked by M&E`, n: `n = ${fmt(p.learners)} learners`
     }));
     return out;
+  }
+
+  const dataTable = (headers, rows) => `<details class="data-table"><summary>View the data</summary><div class="table-wrap"><table><thead><tr>${headers.map(h => `<th>${esc(h)}</th>`).join("")}</tr></thead><tbody>${rows.map(r => `<tr>${r.map((c, i) => i === 0 ? `<th scope="row">${esc(c)}</th>` : `<td>${esc(c)}</td>`).join("")}</tr>`).join("")}</tbody></table></div></details>`;
+  const PRIVACY_HTML = `<p>This is a concept prototype. Everything you add stays in this browser until you export it. Nothing is sent to a server.</p>
+    <ul class="ticks">
+      <li><strong>What it holds:</strong> aggregate figures for sites, schools, events and pilots; coded Fellow records; teacher check-ins without names; anonymous quotes with recorded consent.</li>
+      <li><strong>What it never holds:</strong> learners' names, phone numbers, email addresses, UPI, NEMIS or admission numbers, or photos of children. Uploads and notes that contain them are blocked.</li>
+      <li><strong>Children's data:</strong> Kenya's Data Protection Act (2019) requires a parent or guardian's consent to process a child's data. Learner quotes therefore need caregiver consent and the learner's own agreement.</li>
+      <li><strong>Keeping and deleting:</strong> Export saves a copy and Reset sample data clears this browser. A production version would set retention periods in Metis's data protection policy.</li>
+    </ul>`;
+  function verifiedFigures() {
+    const rows = [["Programme", "Measure", "Value", "Sample", "Source", "Period"]];
+    const ns = northStarNow();
+    if (ns) ns.values.forEach(v => rows.push(["Whole Child Schools", `${v.name} evident in observed lessons`, Math.round(v.value) + "%", `${ns.lessons} lessons, ${ns.schools.length} schools`, "Classroom observation", termLabel(ns.term)]));
+    const sm = schoolMeeting();
+    if (sm) rows.push(["Whole Child Schools", "Learners meeting or exceeding expectations", Math.round(sm.value) + "%", `${sm.n} schools`, "School-based assessment", termLabel(sm.term)]);
+    const m = innovated();
+    if (m) {
+      rows.push(["InnovatED", "Completion", pct(m.completion), `${m.registered} registered, ${m.sites} sites`, "Attendance registers", termLabel(m.term)]);
+      rows.push(["InnovatED", "Using the tool at 8 weeks", pct(m.usePct), `${m.useCompleted} trained teachers, ${m.useSites} sites`, "Head-teacher follow-up", termLabel(m.term)]);
+      rows.push(["InnovatED", "Cost per teacher using the tool (KES)", Math.round(m.costPerActive), `${m.useSites} sites`, "Finance ledger and use data", termLabel(m.term)]);
+    }
+    const tr = teacherReport();
+    if (tr.n) rows.push(["InnovatED", "Teachers who used the tool this week or last", pct(tr.recent / tr.n), `${tr.n} check-ins`, "Teacher check-in (self-report)", termLabel(tr.term)]);
+    const f = fellowship();
+    if (f.n) rows.push(["Metis Fellowship", "Fellows who led a full design test", `${f.led} of ${f.n}`, `${f.n} Fellows`, "Coach observation", termLabel(f.term)]);
+    const e = events();
+    if (e.rows.length) rows.push(["Knowledge Sharing Events", "Commitments followed up", pct(e.followed / e.made), `${e.made} commitments`, "Follow-up calls", `${e.rows.length} events`]);
+    return rows;
   }
 
   /* ---------- charts ---------- */
@@ -502,7 +605,7 @@
     Object.entries(K.counties).sort((a, b) => (fp[a[0]] ? 1 : 0) - (fp[b[0]] ? 1 : 0)).forEach(([name, c]) => {
       const v = fp[name], n = v ? total(v) : 0, b = n ? bin(n) : null;
       const parts = v ? [v.learners && `${fmt(v.learners)} learners in partner schools`, v.teachers && `${v.teachers} teachers trained`, v.fellows && `${v.fellows} Fellow${v.fellows > 1 ? "s" : ""}`, v.events && `${v.events} Knowledge Sharing Event`].filter(Boolean).join(", ") : "no Metis activity in this data";
-      shapes += `<path class="cty-shape${b ? " on" : ""}" d="${c.d}" style="fill:${b ? b[2] : "var(--map-off)"}" tabindex="${b ? 0 : -1}" data-tip="${esc(`${name}: ${parts}`)}"/>`;
+      shapes += `<path class="cty-shape${b ? " on" : ""}" d="${c.d}" style="fill:${b ? b[2] : "var(--map-off)"}" tabindex="${b ? 0 : -1}" data-tip="${esc(`${name}: ${parts}`)}"${b ? ` data-action="county" data-county="${esc(name)}" role="button" aria-label="${esc(`${name}. ${parts}. Open the county profile`)}"` : ""}/>`;
       if (b) {
         const o = MAP_LABEL[name] || [0, 4, "middle"], lx = c.cx + o[0], ly = c.cy + o[1];
         if (o[3]) labels += `<line class="map-leader" x1="${c.cx}" y1="${c.cy}" x2="${lx + 3}" y2="${ly - 4}"/><circle class="map-pin" cx="${c.cx}" cy="${c.cy}" r="2.6"/>`;
@@ -510,7 +613,23 @@
       }
     });
     const legend = `<div class="lg">${MAP_BINS.map(b => swatch(b[2], b[1])).join("")}${swatch("var(--map-off)", "No activity in this data")}</div>`;
-    return `<svg class="chart map" viewBox="0 0 ${K.w} ${K.h}" role="img" aria-label="Map of Kenya's 47 counties shaded by people Metis reaches">${shapes}${K.outline ? `<path class="ken-outline" d="${K.outline}"/>` : ""}${labels}</svg>${legend}<p class="map-src">Learners, teachers and Fellows reached per county. Boundaries: ${esc(K.source)}.</p>`;
+    return `<svg class="chart map" viewBox="0 0 ${K.w} ${K.h}" role="img" aria-label="Map of Kenya's 47 counties shaded by people Metis reaches">${shapes}${K.outline ? `<path class="ken-outline" d="${K.outline}"/>` : ""}${labels}</svg>${legend}<div class="county-detail" aria-live="polite"><p class="small muted">Select a shaded county to see what Metis does there.</p></div>
+      ${dataTable(["County", "Learners in partner schools", "Teachers trained", "Fellows"], Object.entries(fp).filter(([c]) => K.counties[c]).sort((a, b) => total(b[1]) - total(a[1])).map(([c, v]) => [c, fmt(v.learners), fmt(v.teachers), fmt(v.fellows)]))}
+      <p class="map-src">Learners, teachers and Fellows reached per county. Boundaries: ${esc(K.source)}.</p>`;
+  }
+  function countyDetail(name) {
+    const fp = footprint()[name];
+    if (!fp) return "";
+    const m = innovated(), sites = m ? m.items.filter(x => x.row.county === name) : [];
+    const schools = C.SCHOOLS.filter(x => x.county === name), fellows = fellowship().rows.filter(r => r.county === name);
+    const ev = events().rows.filter(r => r.county === name), tc = teacherReport().rows.filter(r => r.county === name);
+    return `<h3>${esc(name)} County</h3><ul class="county-list">
+      ${schools.length ? `<li><strong>Whole Child Schools:</strong> ${schools.map(x => `${esc(x.label)} (${esc(x.stage.toLowerCase())}, ${fmt(x.learners)} learners)`).join("; ")}</li>` : ""}
+      ${sites.length ? `<li><strong>InnovatED:</strong> ${sites.length} site${sites.length > 1 ? "s" : ""} (${sites.map(x => `${esc(x.row.site)}${x.res.exclRow || x.res.exclUse || x.row.using_pct === "" ? ", held back" : `, ${x.row.using_pct}% using`}`).join("; ")}), ${fmt(fp.teachers)} teachers trained</li>` : ""}
+      ${tc.length ? `<li><strong>Teacher check-ins:</strong> ${tc.length} this term</li>` : ""}
+      ${fellows.length ? `<li><strong>Fellows:</strong> ${fellows.length} (${[...new Set(fellows.map(r => r.org_type.toLowerCase()))].join(", ")})</li>` : ""}
+      ${ev.length ? `<li><strong>Knowledge Sharing:</strong> ${ev.map(r => esc(r.event)).join("; ")}</li>` : ""}
+    </ul>`;
   }
 
   function staircase(levels, n) {
@@ -569,11 +688,11 @@
       <div class="stat"><div class="stat-label">Learners reached</div><div class="stat-value">${fmt(learners)}</div>
         <div class="mini-stack" data-tip="${esc(`${fmt(learners)} learners in partner schools, plus an estimated ${fmt(estLearners)} taught by teachers using InnovatED tools (45 per class)`)}" tabindex="0"><span class="solid" style="flex:${learners}"></span><span class="est" style="flex:${estLearners || 1}"></span></div>
         <div class="stat-sub">in partner schools, plus about ${fmt(estLearners)} through InnovatED (estimate)</div></div>
-      <div class="stat stat-row"><div><div class="stat-label">Teachers using tools</div><div class="stat-value">${m ? fmt(m.users) : "n/a"}</div><div class="stat-sub">of ${m ? fmt(m.useCompleted) : 0} trained, at 8 weeks</div></div>${m ? ring(m.usePct, 64, 8, "Share of trained teachers using the tool") : ""}</div>
+      <div class="stat stat-row"><div><div class="stat-label">Teachers using tools</div><div class="stat-value">${m ? fmt(m.users) : "n/a"}</div><div class="stat-sub">of ${m ? fmt(m.useCompleted) : 0} trained, at 8 weeks · target ${pct(C.TARGETS.use8)}</div></div>${m ? ring(m.usePct, 64, 8, "Share of trained teachers using the tool") : ""}</div>
       <div class="stat"><div class="stat-label">Fellows who led a full test</div><div class="stat-value">${f.led}<small>/${f.n}</small></div>
         <div class="mini-dots" aria-hidden="true">${f.rows.map(r => `<i class="${r.led_full_test === "Yes" ? "on" : ""}"></i>`).join("")}</div><div class="stat-sub">Guskey level 4: using it in practice</div></div>
       <div class="stat"><div class="stat-label">Event commitments followed up</div><div class="stat-value">${e.made ? pct(e.followed / e.made) : "n/a"}</div>
-        <div class="mini-cols">${e.rows.map((r, i) => { const v = r.commitments_followed / r.commitments_made; return `<div class="mini-col" tabindex="0" data-tip="${esc(`${r.event}: ${r.commitments_followed} of ${r.commitments_made} followed up`)}"><span style="height:${Math.round(v * 40)}px"></span>KSE ${i + 1}</div>`; }).join("")}</div><div class="stat-sub">${e.followed} of ${e.made}, within a term</div></div>
+        <div class="mini-cols">${e.rows.map((r, i) => { const v = r.commitments_followed / r.commitments_made; return `<div class="mini-col" tabindex="0" data-tip="${esc(`${r.event}: ${r.commitments_followed} of ${r.commitments_made} followed up`)}"><span style="height:${Math.round(v * 40)}px"></span>KSE ${i + 1}</div>`; }).join("")}</div><div class="stat-sub">${e.followed} of ${e.made} within a term · target ${pct(C.TARGETS.commitments)}</div></div>
       <div class="stat"><div class="stat-label">Data verified</div><div class="stat-value">${t.verified}<small>/${t.total}</small></div>
         <div class="seg-bar" tabindex="0" data-tip="${esc(`${t.verified} verified, ${t.pending} awaiting review, ${t.returned} returned`)}"><span class="v" style="flex:${t.verified}"></span>${t.pending ? `<span class="w" style="flex:${t.pending}"></span>` : ""}${t.returned ? `<span class="r" style="flex:${t.returned}"></span>` : ""}</div>
         <div class="stat-sub">${t.pending} awaiting review · ${t.held} rows held back</div></div>
@@ -584,7 +703,7 @@
     const termsWith = C.TERMS.filter(x => northStar(x.id, matched).schools.length === matched.length && matched.length);
     const series = C.NORTH_STAR.map(o => ({ name: o.name, color: NS_COLOR[o.key], vals: termsWith.map(x => northStar(x.id, matched).values.find(v => v.key === o.key).value) }));
     const trend = termsWith.length > 1 ? lineChart(series, termsWith.map(x => x.label.replace(", 2026", "")), { yMin: 20, yMax: 80, step: 20, label: "North Star outcomes by term" }) +
-      `<div class="lg">${series.map(s => swatch(s.color, s.name)).join("")}</div>` : empty("Trends appear once two terms are verified.");
+      `<div class="lg">${series.map(s => swatch(s.color, s.name)).join("")}</div>` + dataTable(["Outcome", ...termsWith.map(x => x.label)], series.map(sr => [sr.name, ...sr.vals.map(v => Math.round(v) + "%")])) : empty("Trends appear once two terms are verified.");
 
     /* InnovatED funnel and bubble */
     const fun = m ? funnelSVG([["Metis-led", m.metis, "var(--teal)"], ["Partner-led", m.partner, "var(--orange)"]].map(([name, a, color]) => ({
@@ -621,29 +740,85 @@
     const voice = state.voices.filter(v => v.consent);
     const spot = voice.length ? voice[new Date().getDate() % voice.length] : null;
 
+    const due = state.decisions.filter(isDue).length;
+    const tr = teacherReport();
     const decide = isDonor() ? dcard(6, "About this view", "", `<p>You're seeing verified data only. Every figure has passed Metis's data checks and been reviewed by M&E.</p><a class="btn primary" href="#/donor">Open the donor report</a>`) :
-      dcard(6, "Needs a decision", "From rules agreed in advance", `${pr.list.slice(0, 4).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span>${esc(p.title)}</a>`).join("")}<a class="text-link more-link" href="#/decide">All prompts and the decision log</a>`);
+      isTeacher() ? dcard(6, "Your check-in", "", `<p>Tell us how the tools are working in your class. It takes two minutes, in English or Kiswahili, and no learner is ever named.</p><a class="btn primary" href="#/checkin">Send a check-in</a>`) :
+      dcard(6, "Needs a decision", "From rules agreed in advance", `${due ? `<a class="prompt-mini" href="#/decide"><span class="sev decide">Due</span>${due} recorded decision${due > 1 ? "s are" : " is"} due for another look</a>` : ""}${pr.list.slice(0, 4).map(p => `<a class="prompt-mini" href="#/decide"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span>${esc(p.title)}</a>`).join("")}<a class="text-link more-link" href="#/decide">All prompts and the decision log</a>`);
+    const teacherCard = tr.n ? dcard(12, "What teachers report", `${tr.n} verified check-ins, ${termLabel(tr.term)}. Teachers' own accounts, read beside the head-teacher figures above.`, teacherPanel(tr), "#/programs/innovated") : "";
 
     return `<header class="page-head dash-head"><div><div class="eyebrow">Impact dashboard · verified data</div><h1>Whole Child Learning at a glance</h1>
         <p class="lede">Every figure comes from data that has passed checks and been verified by M&E. Hover over or tap any chart for detail.</p></div>
-        ${t.pending && !isDonor() ? `<p class="note">${chip("wait", "Awaiting review")} ${t.pending} submissions aren't counted yet. <a href="#/review">Review them</a></p>` : ""}</header>
+        ${t.pending && can.review() ? `<p class="note">${chip("wait", "Awaiting review")} ${t.pending} submissions aren't counted yet. <a href="#/review">Review them</a></p>` : ""}</header>
       ${stats}
       <div class="dash">
         ${ns ? `<section class="dcard span-7 ns-card"><div class="dcard-head"><h2>Are the children we reach thriving as whole people?</h2><a class="more" href="#/programs/schools">Details</a></div>
           <p class="dsub">Share of observed lessons where each North Star outcome was clearly evident: ${ns.schools.length} schools, ${ns.lessons} lessons, ${termLabel(ns.term)}. Dashed line: ${ns.baseTerm ? termLabel(ns.baseTerm) : "first term"}.</p>${northStarSVG(ns)}</section>` : ""}
         ${dcard(5, "How each outcome has moved", `The same ${matched.length} schools in every term, so the comparison is like for like.`, trend, "#/programs/schools")}
-        ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun, "#/programs/innovated")}
-        ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` : empty("No verified InnovatED data yet."), "#/programs/innovated")}
-        ${dcard(6, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Hover over a county for the detail.", countyMap(footprint()))}
+        ${dcard(6, "From registration to classroom use", m ? `Teachers per 100 who registered, ${termLabel(m.term)}. Sites with reliable follow-up data.` : "", fun + (m ? dataTable(["Delivery", "Registered", "Completed", "Using at 8 weeks"], [["Metis-led", m.metis], ["Partner-led", m.partner]].map(([n, a]) => [n, `100 (${fmt(a.useRegistered)} teachers)`, `${Math.round(a.useCompleted / a.useRegistered * 100)} (${fmt(a.useCompleted)})`, `${Math.round(a.per100)} (about ${fmt(a.users)})`])) : ""), "#/programs/innovated")}
+        ${dcard(6, "Cost against results, by site", "Bubble size shows teachers registered. Dashed lines mark the medians. Hover over a bubble for the site.", m ? bubbleSVG(m.useI) + `<div class="lg">${swatch("var(--teal)", "Metis-led")}${swatch("var(--orange)", "Partner-led")}</div>` + dataTable(["Site", "County", "Delivered by", "Registered", "Using at 8 weeks", "KES per teacher using"], m.useI.map(x => [x.row.site, x.row.county, x.row.delivered_by, x.row.registered, x.row.using_pct + "%", fmt(x.row.cost_per_completer / (x.row.using_pct / 100))])) : empty("No verified InnovatED data yet."), "#/programs/innovated")}
+        ${dcard(6, "Where we work", "Kenya's 47 counties, shaded by learners, teachers and Fellows reached. Select a shaded county for its profile.", countyMap(footprint()))}
         ${dcard(6, "North Star by school", "Share of observed lessons where each outcome was evident. Latest verified term for each school.", heat, "#/programs/schools")}
         ${dcard(4, "Fellowship cohort", `${f.n} Fellows by status, ${termLabel(f.term)}.`, waffle, "#/programs/fellowship")}
         ${dcard(4, "From reaction to learners", "Guskey's five levels: Fellows reaching each one.", guskey, "#/programs/fellowship")}
         ${dcard(4, "Feedback turnaround", "", fb, "#/programs/fellowship")}
         ${dcard(6, "Who comes to Knowledge Sharing Events", `${fmt(e.attendees)} people across ${e.rows.length} events.`, picto, "#/programs/events")}
         ${dcard(6, "EdTech evidence ladder", "Pilots move right only when the evidence is there. Dot size shows learners; the number is learners reached.", pilots.length ? ladderSVG(pilots) : empty("No pilots yet."), "#/programs/testbed")}
+        ${teacherCard}
         ${decide}
         ${spot ? dcard(6, "In their words", "", `<figure class="spot"><blockquote>${esc(spot.text)}</blockquote><figcaption>${esc(spot.role)} · ${esc(spot.county)} <span class="voice-tags">${spot.tags.map(tg => C.NORTH_STAR.find(n => n.key === tg)).filter(Boolean).map(o => `<span class="ns-dot" title="${o.name}">${o.letter}</span>`).join("")}</span></figcaption></figure>`, "#/voices") : ""}
       </div>`;
+  }
+
+  function teacherPanel(tr) {
+    const none = (tr.support.find(x => x[0] === "None right now") || [0, 0])[1];
+    return `<div class="tr-grid">
+      <div class="tr-col"><div class="tr-ring">${ring(tr.recent / tr.n, 96, 11, "Teachers who used the tool in the last two weeks")}<div><div class="stat-value">${tr.recent}<small>/${tr.n}</small></div><div class="small muted">used the tool this week or last · target ${pct(C.TARGETS.recentUse)}</div></div></div>
+        ${tr.minutesN ? `<p class="small">Median time saved: <strong>${Math.round(tr.minutes)} minutes</strong> a week, from ${tr.minutesN} teachers who gave a figure.</p>` : ""}
+        ${tr.girls + tr.boys ? `<p class="small">In their classes: <strong>${pct(tr.girls / (tr.girls + tr.boys))}</strong> girls and <strong>${fmt(tr.swd)}</strong> learners with disabilities, across ${fmt(tr.learners)} learners.</p>` : ""}</div>
+      <div class="tr-col"><h3>North Star outcomes teachers saw this week</h3>${bars(tr.outcomes.map(([o, v]) => ({ label: o.name, value: v, text: `${v} of ${tr.n}` })), { max: tr.n })}</div>
+      <div class="tr-col"><h3>Support they asked for</h3>${bars(tr.support.filter(x => x[0] !== "None right now").map(([k, v]) => ({ label: k, value: v, text: String(v), cls: "slate-fill" })), { max: tr.n })}<p class="small muted">${none} said they need nothing right now.</p></div>
+    </div>`;
+  }
+
+  let lang = "en", lastCheckin = null;
+  const L = {
+    en: { title: "Teacher check-in", lede: "Two minutes, every two weeks. It helps Metis see how the tools are working in real classrooms. Please don't write any learner's name.", school: "School or training site code", county: "County", grade: "Class you teach", size: "Learners in the class", makeup: "Who is in your class? (optional)", girls: "Girls", boys: "Boys", swd: "Learners with disabilities", last: "When did you last use the InnovatED tool in a lesson?", usedFor: "What did you use it for?", minutes: "Minutes it saved you this week", outcomes: "What did your learners show this week?", worked: "One thing that worked (no names)", support: "What support would help?", send: "Send check-in", sent: "Thank you. Your check-in is saved and the M&E team will review it.", another: "Send another check-in", optional: "optional", missing: "Please fill in the school code, class size, when you last used the tool and the support you need.", names: "Please remove any names, phone numbers or email addresses from your note." },
+    sw: { title: "Ripoti fupi ya mwalimu", lede: "Dakika mbili, kila wiki mbili. Inasaidia Metis kuona jinsi zana zinavyofanya kazi darasani. Tafadhali usiandike jina la mwanafunzi yeyote.", school: "Msimbo wa shule au kituo cha mafunzo", county: "Kaunti", grade: "Darasa unalofundisha", size: "Idadi ya wanafunzi darasani", makeup: "Darasa lako lina nani? (si lazima)", girls: "Wasichana", boys: "Wavulana", swd: "Wanafunzi wenye ulemavu", last: "Ulitumia lini zana ya InnovatED katika somo mara ya mwisho?", usedFor: "Uliitumia kwa nini?", minutes: "Dakika ulizookoa wiki hii", outcomes: "Wanafunzi wako walionyesha nini wiki hii?", worked: "Jambo moja lililofanikiwa (bila majina)", support: "Ungependa msaada gani?", send: "Tuma ripoti", sent: "Asante. Ripoti yako imehifadhiwa na timu ya M&E itaikagua.", another: "Tuma ripoti nyingine", optional: "si lazima", missing: "Tafadhali jaza msimbo wa shule, idadi ya wanafunzi, mara ya mwisho ulipotumia zana na msaada unaohitaji.", names: "Tafadhali ondoa majina, nambari za simu au barua pepe kwenye maelezo yako." }
+  };
+  const OPT_SW = { "This week": "Wiki hii", "Last week": "Wiki iliyopita", "2 to 4 weeks ago": "Wiki 2 hadi 4 zilizopita", "More than a month ago": "Zaidi ya mwezi mmoja uliopita", "Not yet": "Bado sijaitumia", "None right now": "Hakuna kwa sasa", "Coaching visit": "Ziara ya mkufunzi", "Help with the tool": "Msaada wa kutumia zana", "Peer group": "Kikundi cha walimu wenzangu", "Materials": "Vifaa vya kufundishia", "ECDE": "Elimu ya awali (ECDE)", "Grades 1 to 3": "Gredi 1 hadi 3", "Grades 4 to 6": "Gredi 4 hadi 6", "Grades 7 to 9": "Gredi 7 hadi 9", "Lesson plan": "Andalio la somo", "Scheme of work": "Maazimio ya kazi", "Assessment": "Tathmini", "Teaching strategy": "Mbinu ya kufundisha" };
+  const NS_SW = { agency: "Kujiamulia", belonging: "Kuhisi kukubalika", creativity: "Ubunifu", delight: "Furaha", expertise: "Umahiri" };
+  const tx = k => L[lang][k], opt = o => (lang === "sw" ? OPT_SW[o] || o : o);
+  const USES = ["Lesson plan", "Scheme of work", "Assessment", "Teaching strategy"];
+
+  function viewCheckin() {
+    const tr = teacherReport();
+    const codes = [...new Set([...state.submissions.filter(x => x.dataset === "innovated_sites").flatMap(x => x.rows.map(r => r.site)), ...C.SCHOOLS.map(x => x.id)])].sort();
+    const choice = (name, opts, type) => `<div class="choices">${opts.map(o => `<label class="choice"><input type="${type}" name="${name}" value="${esc(o)}"><span>${esc(opt(o))}</span></label>`).join("")}</div>`;
+    const done = lastCheckin ? `<section class="card checkin-done" role="status"><h2>${tx("sent")}</h2><p class="muted">${esc(lastCheckin)}</p><button class="btn" data-action="checkin-again">${tx("another")}</button></section>` : "";
+    const form = `<form id="checkin-form" class="card checkin" novalidate>
+      <div class="ci-grid">
+        <label>${tx("school")}<input type="text" name="school" list="site-codes" autocomplete="off" placeholder="A, D, S1"><datalist id="site-codes">${codes.map(c => `<option value="${esc(c)}"></option>`).join("")}</datalist></label>
+        <label>${tx("county")}<select name="county">${C.COUNTIES.map(c => `<option${c === "Nakuru" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
+        <label>${tx("grade")}<select name="grade_band">${C.GRADE_BANDS.map(g => `<option value="${esc(g)}">${esc(opt(g))}</option>`).join("")}</select></label>
+        <label>${tx("size")}<input type="number" name="class_size" min="1" max="150" inputmode="numeric"></label>
+      </div>
+      <fieldset><legend>${tx("makeup")}</legend><div class="ci-grid three">
+        <label>${tx("girls")}<input type="number" name="girls" min="0" inputmode="numeric"></label>
+        <label>${tx("boys")}<input type="number" name="boys" min="0" inputmode="numeric"></label>
+        <label>${tx("swd")}<input type="number" name="with_disability" min="0" inputmode="numeric"></label></div></fieldset>
+      <fieldset><legend>${tx("last")}</legend>${choice("last_used", C.LAST_USED, "radio")}</fieldset>
+      <fieldset><legend>${tx("usedFor")} <span class="muted">(${tx("optional")})</span></legend>${choice("used_for", USES, "checkbox")}</fieldset>
+      <label class="ci-narrow">${tx("minutes")} <span class="muted">(${tx("optional")})</span><input type="number" name="minutes_saved" min="0" max="900" inputmode="numeric"></label>
+      <fieldset><legend>${tx("outcomes")}</legend><div class="choices">${C.NORTH_STAR.map(o => `<label class="choice"><input type="checkbox" name="outcomes_seen" value="${o.key}"><span><span class="ns-dot">${o.letter}</span> ${lang === "sw" ? `${NS_SW[o.key]} (${o.name})` : o.name}</span></label>`).join("")}</div></fieldset>
+      <label>${tx("worked")}<textarea name="what_worked" rows="2" maxlength="200"></textarea></label>
+      <fieldset><legend>${tx("support")}</legend>${choice("support", C.SUPPORT, "radio")}</fieldset>
+      <div class="form-actions"><button class="btn primary big" type="submit">${tx("send")}</button><span class="form-msg" id="ci-msg" role="status"></span></div>
+    </form>`;
+    return `<div class="checkin-wrap">${head("i · Iterate", tx("title"), tx("lede"))}
+      <div class="lang-toggle" role="group" aria-label="Language"><button class="pill${lang === "en" ? " on" : ""}" data-action="lang" data-v="en" aria-pressed="${lang === "en"}">English</button><button class="pill${lang === "sw" ? " on" : ""}" data-action="lang" data-v="sw" aria-pressed="${lang === "sw"}">Kiswahili</button></div>
+      ${done || form}
+      ${isTeacher() ? "" : `<p class="small muted">Staff can also enter a check-in for a teacher during a visit. Check-ins go to M&E for review like any other data.${tr.n ? ` ${tr.n} verified check-ins so far in ${termLabel(tr.term)}.` : ""}</p>`}</div>`;
   }
 
   function viewDesign() {
@@ -663,11 +838,16 @@
       stage("i", "Iterate", "We tried something new. How do we evolve it?", `
         <div class="chain">${D.chain.map((c, i) => `<div class="chain-step"><div class="chain-k">${esc(c[0])}</div><p>${esc(c[1])}</p></div>${i < D.chain.length - 1 ? '<div class="chain-arrow" aria-hidden="true">→</div>' : ""}`).join("")}</div>
         <h3>North Star outcomes and CBE</h3>
-        <div class="table-wrap"><table><thead><tr><th>Outcome</th><th>What it looks like in class</th><th>CBE link</th></tr></thead><tbody>${C.NORTH_STAR.map(o => `<tr><th scope="row"><span class="ns-dot">${o.letter}</span> ${o.name}</th><td>${esc(o.looks)}</td><td>${esc(o.cbe)}</td></tr>`).join("")}</tbody></table></div>`) +
+        <div class="table-wrap"><table><thead><tr><th>Outcome</th><th>What it looks like in class</th><th>CBE link</th></tr></thead><tbody>${C.NORTH_STAR.map(o => `<tr><th scope="row"><span class="ns-dot">${o.letter}</span> ${o.name}</th><td>${esc(o.looks)}</td><td>${esc(o.cbe)}</td></tr>`).join("")}</tbody></table></div>
+        <h3 id="indicators">How each indicator is measured</h3>
+        <div class="table-wrap"><table><thead><tr><th>Level</th><th>Indicator</th><th>Definition</th><th>Source</th><th>How often</th><th>Target</th></tr></thead><tbody>${D.indicators.map(r => `<tr><td>${esc(r[0])}</td><th scope="row">${esc(r[1])}</th><td>${esc(r[2])}</td><td>${esc(r[3])}</td><td>${esc(r[4])}</td><td>${esc(r[5])}</td></tr>`).join("")}</tbody></table></div>`) +
       stage("s", "Share", "We share our learning. How do we support others?", `
         <div class="objectives">${D.impact.map(o => `<div class="objective"><h3>${esc(o[0])}</h3><p>${esc(o[1])}</p></div>`).join("")}</div>`) +
       `<section class="card"><h2>The expert council</h2><p class="muted">Each lens set one requirement the portal had to meet.</p>
-        <div class="table-wrap"><table><thead><tr><th>Lens</th><th>Requirement</th><th>How the portal meets it</th></tr></thead><tbody>${D.council.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div></section>`;
+        <div class="table-wrap"><table><thead><tr><th>Lens</th><th>Requirement</th><th>How the portal meets it</th></tr></thead><tbody>${D.council.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div></section>
+      <section class="card"><h2>Expert review, round two: gaps found and fixed</h2><p class="muted">After the first version went live, each lens reviewed it again. Every gap below is now built into the portal.</p>
+        <div class="table-wrap"><table><thead><tr><th>Lens</th><th>Gap found</th><th>What changed</th></tr></thead><tbody>${D.review2.map(c => `<tr><th scope="row">${esc(c[0])}</th><td>${esc(c[1])}</td><td>${esc(c[2])}</td></tr>`).join("")}</tbody></table></div>
+        <h3>Still to come</h3><ul class="ticks">${D.next.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>`;
   }
 
   let voiceFilter = "all";
@@ -677,13 +857,14 @@
     const form = can.add() ? `
       <section class="card">
         <h2>Add a voice</h2>
-        <p class="muted">Use a short quote, no names. For learners under 18, caregiver consent must be recorded before you save.</p>
+        <p class="muted">Use a short quote with no names. A learner's quote needs a parent or caregiver's consent and the learner's own agreement. <button class="text-link as-btn" type="button" data-action="privacy">How data is handled</button></p>
         <form id="voice-form" class="form-grid" novalidate>
           <label>Who said it<select name="role" required>${["Learner, ECDE", "Learner, Grades 1 to 3", "Learner, Grades 4 to 6", "Learner, Grades 7 to 9", "Teacher", "Caregiver", "School leader", "Fellow", "County officer"].map(r => `<option>${r}</option>`).join("")}</select></label>
           <label>County<select name="county">${C.COUNTIES.map(c => `<option${c === "Nairobi" ? " selected" : ""}>${esc(c)}</option>`).join("")}</select></label>
           <label class="span-2">Quote<textarea name="text" rows="3" maxlength="280" required placeholder="What they said, in their words"></textarea></label>
           <fieldset class="span-2"><legend>North Star outcomes it shows</legend>${C.NORTH_STAR.map(o => `<label class="check"><input type="checkbox" name="tags" value="${o.key}"> ${o.name}</label>`).join("")}</fieldset>
-          <label class="check span-2"><input type="checkbox" name="consent" required> Consent is recorded for this quote</label>
+          <label class="check span-2"><input type="checkbox" name="consent"> Consent is recorded (for a learner, from a parent or caregiver)</label>
+          <label class="check span-2"><input type="checkbox" name="assent"> For a learner: they agreed to share their words</label>
           <div class="span-2 form-actions"><button class="btn primary" type="submit">Save voice</button><span class="form-msg" id="voice-msg" role="status"></span></div>
         </form>
       </section>` : "";
@@ -734,9 +915,12 @@
     return programTabs("innovated") + head("t · Tackle", "InnovatED", `Teacher training with AI-supported tools. ${termLabel(m.term)}, eight weeks after training. Follow-up for Term 3 training arrives eight weeks after each session.`) +
       `<div class="kpis">${kpi("Teachers registered", fmt(m.registered), `${m.sites} sites, ${m.counties} counties`)}
         ${kpi("Completed", pct(m.completion), `${fmt(m.completed)} teachers`)}
-        ${kpi("Using the tool at 8 weeks", pct(m.usePct), `${m.useSites} sites with reliable follow-up`)}
+        ${kpi("Using the tool at 8 weeks", pct(m.usePct), `${m.useSites} sites with reliable follow-up · target ${pct(C.TARGETS.use8)}`)}
         ${kpi("Per teacher completed", kes(m.costPerCompleter), "total cost ÷ completers")}
-        ${kpi("Per teacher using the tool", kes(m.costPerActive), "the measure we budget on", "Cost per completer divided by the share using the tool. It counts drop-out and non-use, which cost per completer hides.")}</div>
+        ${kpi("Per teacher using the tool", kes(m.costPerActive), `the measure we budget on · target ${kes(C.TARGETS.costPerActive)} or less`, "Cost per completer divided by the share using the tool. It counts drop-out and non-use, which cost per completer hides.")}
+        ${kpi("Per learner reached (estimate)", kes(m.costPerActive / 45), "assumes a class of 45", "Cost per teacher using the tool divided by an average class of 45 learners. A rough guide, not a measured figure.")}
+        ${isFinite(m.women) ? kpi("Women among completers", pct(m.women), `${m.womenSites} sites reporting`) : ""}</div>
+      ${(() => { const tr = teacherReport(); return tr.n ? `<section class="card"><h2>What teachers tell us</h2><p class="muted">From teachers' own check-ins, ${termLabel(tr.term)}. Head teachers reported ${pct(m.usePct)} using the tool eight weeks after ${termLabel(m.term)} training; ${pct(tr.recent / tr.n)} of teachers checking in this term say they used it in the last two weeks. Different groups and terms, so read them side by side, not as a trend.</p>${teacherPanel(tr)}${can.add() || isTeacher() ? `<p><a class="btn" href="#/checkin">Send a teacher check-in</a></p>` : ""}</section>` : ""; })()}
       <section class="card"><h2>Metis-led and partner-led delivery</h2>
         <div class="table-wrap"><table class="num"><thead><tr><th></th><th>Completion</th><th>Using at 8 weeks</th><th>Using, per 100 registered</th><th>Per teacher completed</th><th>Per teacher using</th></tr></thead><tbody>
           ${cmpRow("Metis-led, all sites", m.metis)}${cmpRow("Partner-led, all sites", m.partner)}
@@ -772,7 +956,8 @@
       `<div class="kpis">${kpi("Partner schools", C.SCHOOLS.length, C.STAGES.map(st => `${C.SCHOOLS.filter(x => x.stage === st).length} ${st.toLowerCase()}`).filter(x => !x.startsWith("0")).join(" · "))}
         ${kpi("Learners", fmt(learners), "enrolled in partner schools")}
         ${ns ? kpi(`Lessons observed, ${termLabel(ns.term).replace(", 2026", "")}`, ns.lessons, `${ns.schools.length} schools verified so far`) : ""}
-        ${ns ? kpi("Lowest outcome", [...ns.values].sort((a, b) => a.value - b.value)[0].name, "next term's coaching focus") : ""}</div>
+        ${ns ? kpi("Lowest outcome", [...ns.values].sort((a, b) => a.value - b.value)[0].name, `next term's coaching focus · agency target ${C.TARGETS.agency}% by Term 3, 2027`) : ""}
+        ${(() => { const sm = schoolMeeting(); return sm ? kpi("Meeting or exceeding expectations", Math.round(sm.value) + "%", `CBE school-based assessment, ${sm.n} schools · target ${C.TARGETS.meeting}%`) : ""; })()}</div>
       <section class="card"><h2>North Star by school</h2><p class="muted">Share of observed lessons where each outcome was clearly evident. Latest verified term for each school.</p>
         <div class="table-wrap"><table class="heat"><thead><tr><th>School</th>${C.NORTH_STAR.map(o => `<th><span class="ns-dot">${o.letter}</span> ${o.name}</th>`).join("")}<th>Stage</th></tr></thead><tbody>
         ${latestBySchool.map(({ s, found, waiting }) => `<tr><th scope="row"><div>${esc(s.label)}</div><div class="small muted">${esc(s.type)}, ${esc(s.county)} · ${found ? termLabel(found.term) : "no data"}</div>${waiting && !isDonor() ? chip("wait", "New term awaiting review") : ""}</th>
@@ -803,7 +988,7 @@
       ${e.rows.map(r => `<section class="card"><h2>${esc(r.event)}</h2><p class="muted">${esc(r.county)} · ${fmt(e.att(r))} people</p>
         <div class="two-col"><div>${bars(e.groups.map(g => ({ label: g[1], value: +r[g[0]], text: fmt(r[g[0]]) })), { max: Math.max(...e.rows.flatMap(x => e.groups.map(g => +x[g[0]]))) })}</div>
         <div class="follow"><div class="kpi-label">Commitments followed up</div><div class="kpi-value">${pct(r.commitments_followed / r.commitments_made)}</div><div class="kpi-sub">${r.commitments_followed} of ${r.commitments_made}</div></div></div></section>`).join("")}
-      ${isDonor() ? "" : `<section class="card notice"><h2>KSE Term 3: Fellows showcase</h2><p>Attendance and commitments haven't been submitted yet.</p><a class="btn" href="#/add" data-action="pick-ds-link" data-ds="event_attendance">Add event data</a></section>`}`;
+      ${!can.add() ? "" : `<section class="card notice"><h2>KSE Term 3: Fellows showcase</h2><p>Attendance and commitments haven't been submitted yet.</p><a class="btn" href="#/add" data-action="pick-ds-link" data-ds="event_attendance">Add event data</a></section>`}`;
   }
 
   /* ----- add data ----- */
@@ -913,6 +1098,7 @@
             ${can.verify() && s.status !== "verified" ? `<button class="btn primary" data-action="verify" data-id="${esc(s.id)}">Verify</button>` : ""}
             ${can.verify() && s.status === "submitted" ? `<button class="btn" data-action="return" data-id="${esc(s.id)}">Return with a note</button>` : ""}
             ${state.role === "staff" && s.status === "returned" ? `<button class="btn" data-action="resubmit" data-id="${esc(s.id)}">Resubmit</button>` : ""}</div>
+          ${open ? `<ol class="history" aria-label="History">${historyOf(s).map(h => `<li><span class="h-date">${prettyDate(h.at)}</span>${esc(h.what)} <span class="muted">by ${esc(h.who)}</span></li>`).join("")}</ol>` : ""}
           ${open ? `<div class="table-wrap"><table class="num"><thead><tr>${d.fields.map(f => `<th>${esc(f.label)}</th>`).join("")}<th>Checks</th></tr></thead><tbody>${s.rows.map((r, i) => { const cl = checkLabel(res[i]); return `<tr>${d.fields.map(f => `<td>${esc(r[f.key])}</td>`).join("")}<td>${chip(cl.cls, cl.text)}${res[i].issues.length ? `<div class="issue-list">${res[i].issues.map(x => esc(x.msg)).join("<br>")}</div>` : ""}</td></tr>`; }).join("")}</tbody></table></div>` : ""}
         </article>`; }).join("") || empty("Nothing here.")}</div>`;
   }
@@ -924,12 +1110,13 @@
       `${can.decide() ? "" : `<p class="alert info">You're viewing as ${esc(roleOf().label)}. Switch to Decision maker (top right) to record decisions.</p>`}
       <div class="prompts">${pr.list.map(p => `<article class="card prompt ${p.sev}">
         <div class="prompt-top"><span class="sev ${p.sev}">${p.sev === "decide" ? "Decide" : "Watch"}</span><a class="small" href="#/${p.route}">See the data</a></div>
-        <h2>${esc(p.title)}</h2><p class="evidence">${esc(p.evidence)}</p><p class="rule">${esc(p.rule)}</p>
+        <h2>${esc(p.title)}</h2>${decisionFor(p.id) ? `<p>${chip("ok", `Decision recorded ${prettyDate(decisionFor(p.id).date)}`)}</p>` : ""}<p class="evidence">${esc(p.evidence)}</p><p class="rule">${esc(p.rule)}</p>
         <div class="options"><span class="small muted">Options</span><ul>${p.options.map(o => `<li>${esc(o)}</li>`).join("")}</ul></div>
         ${can.decide() ? `<button class="btn primary" data-action="record" data-id="${p.id}">Record a decision</button>` : ""}</article>`).join("")}</div>
       ${pr.onTrack.length ? `<section class="card"><h2>On track</h2><ul class="ticks">${pr.onTrack.map(o => `<li>${esc(o)}</li>`).join("")}</ul></section>` : ""}
-      <section class="card"><h2>Decision log</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Decision</th><th>Owner</th><th>Look again</th></tr></thead><tbody>
-        ${state.decisions.map(d => `<tr><td class="nowrap">${prettyDate(d.date)}</td><td><strong>${esc(d.title)}</strong><div class="small">${esc(d.decision)}</div></td><td>${esc(d.owner)}</td><td class="nowrap">${prettyDate(d.review)}</td></tr>`).join("")}
+      <section class="card"><h2>Decision log</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Decision</th><th>Owner</th><th>Look again</th><th>Status</th></tr></thead><tbody>
+        ${state.decisions.map(d => `<tr><td class="nowrap">${prettyDate(d.date)}</td><td><strong>${esc(d.title)}</strong><div class="small">${esc(d.decision)}</div></td><td>${esc(d.owner)}</td><td class="nowrap">${prettyDate(d.review)}</td>
+          <td>${d.reviewedOn ? chip("ok", `Reviewed ${prettyDate(d.reviewedOn)}`) : isDue(d) ? `${chip("warn", "Review due")}${can.decide() ? ` <button class="text-link as-btn small" data-action="mark-reviewed" data-id="${esc(d.id)}">Mark reviewed</button>` : ""}` : chip("wait", "Open")}</td></tr>`).join("")}
       </tbody></table></div></section>`;
   }
 
@@ -940,16 +1127,18 @@
     return `<div class="donor">
       <header class="page-head donor-head"><div><div class="eyebrow">s · Share · Prepared for funders and partners</div><h1>Whole Child Learning impact report</h1>
         <p class="lede">Built only from verified data, as of ${prettyDate(today())}. Every statement carries its source and sample size.</p></div>
-        <button class="btn primary no-print" data-action="print">Print or save as PDF</button></header>
+        <div class="donor-actions no-print"><button class="btn primary" data-action="print">Print or save as PDF</button><button class="btn" data-action="csv-figures">Download verified figures (CSV)</button></div></header>
       ${ns ? `<section class="card"><h2>Are the children we reach thriving as whole people?</h2><p class="muted">Share of observed lessons where each North Star outcome was clearly evident, ${termLabel(ns.term)}.</p>${northStarSVG(ns)}</section>` : ""}
       <section class="card"><h2>What we can say with confidence</h2>
         <div class="sentences">${s.map(x => `<div class="sentence"><div class="eyebrow">${esc(x.program)}</div><p>${esc(x.text)}</p><p class="small muted">${esc(x.source)} · ${esc(x.n)}</p><button class="text-link as-btn no-print" data-action="copy" data-text="${esc(x.text)}">Copy sentence</button></div>`).join("")}</div></section>
+      ${(() => { const learn = prompts().list.filter(p => p.learn).map(p => p.learn); return learn.length ? `<section class="card"><h2>What we're learning</h2><p class="muted">Where results are weaker than we want, and what we're doing about it.</p><ul class="ticks">${learn.map(x => `<li>${esc(x)}</li>`).join("")}</ul></section>` : ""; })()}
       <section class="card"><h2>In their words</h2><div class="voices donor-voices">${voices.map(v => `<figure class="voice"><blockquote>${esc(v.text)}</blockquote><figcaption>${esc(v.role)} · ${esc(v.county)}</figcaption></figure>`).join("")}</div></section>
       <section class="card"><h2>How we know</h2><ul class="ticks">
         <li>Figures come only from submissions verified by M&E: ${t.verified} of ${t.total} so far. Anything awaiting review is left out.</li>
         <li>Rows that fail checks (for example more completers than registrants, or impossible percentages) are held back from the figures they affect.</li>
         <li>Teacher use is reported by head teachers and checked through call-backs to a sample of teachers. We don't yet claim learning gains from InnovatED.</li>
-        <li>No child is named. Quotes are shared only with recorded consent.</li></ul></section>
+        <li>No child is named. Learner quotes are shared only with a caregiver's consent and the learner's own agreement.</li>
+        <li>Every indicator has a written definition, source and target. <a href="#/design">See how each one is measured</a>.</li></ul></section>
     </div>`;
   }
 
@@ -959,11 +1148,11 @@
     { stage: "m", name: "Make meaning" }, { route: "design", label: "Design map" },
     { stage: "e", name: "Empathize" }, { route: "voices", label: "Voices" },
     { stage: "t", name: "Tackle" }, ...C.PROGRAMS.map(p => ({ route: "programs/" + p.id, label: p.name, sub: true })),
-    { stage: "i", name: "Iterate", internal: true }, { route: "add", label: "Add data", internal: true }, { route: "review", label: "Review and trust", internal: true, badge: () => pending().length }, { route: "decide", label: "Pause and adapt", internal: true, badge: () => prompts().list.filter(p => p.sev === "decide").length },
+    { stage: "i", name: "Iterate", noDonor: true }, { route: "checkin", label: "Teacher check-in", noDonor: true }, { route: "add", label: "Add data", internal: true }, { route: "review", label: "Review and trust", internal: true, badge: () => pending().length }, { route: "decide", label: "Pause and adapt", internal: true, badge: () => prompts().list.filter(p => p.sev === "decide").length },
     { stage: "s", name: "Share" }, { route: "donor", label: "Donor report" }
   ];
   function renderNav(cur) {
-    $("#nav").innerHTML = NAV.filter(n => !(n.internal && isDonor())).map(n => {
+    $("#nav").innerHTML = NAV.filter(n => !(n.internal && (isDonor() || isTeacher())) && !(n.noDonor && isDonor())).map(n => {
       if (n.stage) return `<div class="nav-stage"><span class="nav-letter">${n.stage}</span>${n.name}</div>`;
       const on = cur === n.route || (n.route === "programs/fellowship" && cur === "programs");
       const b = n.badge ? n.badge() : 0;
@@ -974,12 +1163,12 @@
     $("#role").setAttribute("data-tip", roleOf().hint);
     document.body.dataset.role = state.role;
   }
-  const VIEWS = { overview: viewOverview, design: viewDesign, voices: viewVoices, add: viewAdd, review: viewReview, decide: viewDecide, donor: viewDonor };
+  const VIEWS = { overview: viewOverview, design: viewDesign, voices: viewVoices, checkin: viewCheckin, add: viewAdd, review: viewReview, decide: viewDecide, donor: viewDonor };
   const PROGRAM_VIEWS = { fellowship: viewFellowship, innovated: viewInnovated, schools: viewSchools, testbed: viewTestbed, events: viewEvents };
   function route() {
     let h = location.hash.replace(/^#\/?/, "") || "overview";
     let [page, sub] = h.split("/");
-    if (isDonor() && ["add", "review", "decide"].includes(page)) { location.hash = "#/overview"; return; }
+    if ((isDonor() && ["add", "review", "decide", "checkin"].includes(page)) || (isTeacher() && ["add", "review", "decide"].includes(page))) { location.hash = "#/overview"; return; }
     let html;
     if (page === "programs") { sub = PROGRAM_VIEWS[sub] ? sub : "fellowship"; html = PROGRAM_VIEWS[sub](); h = "programs/" + sub; }
     else html = (VIEWS[page] || viewOverview)();
@@ -1036,7 +1225,7 @@
     }
     else if (act === "submit-rows") {
       const title = ($("#add-title").value || "").trim() || C.DATASETS[add.ds].label;
-      state.submissions.push({ id: uid("sub"), dataset: add.ds, term: add.term, title, submittedBy: roleOf().label, submittedAt: today(), status: "submitted", note: "", rows: add.rows });
+      state.submissions.push({ id: uid("sub"), dataset: add.ds, term: add.term, title, submittedBy: roleOf().label, submittedAt: today(), status: "submitted", note: "", rows: add.rows, history: [{ at: today(), who: roleOf().label, what: "Submitted" }] });
       save(); add.ds = null; add.rows = []; add.notes = []; reviewFilter = "all";
       toast("Submitted for review"); location.hash = "#/review";
     }
@@ -1045,6 +1234,7 @@
     else if (act === "toggle-sub") { const id = a.dataset.id; openSubs.has(id) ? openSubs.delete(id) : openSubs.add(id); rerender(); }
     else if (act === "verify") {
       const s = state.submissions.find(x => x.id === a.dataset.id);
+      logEvent(s, "Verified", "M&E");
       Object.assign(s, { status: "verified", reviewedBy: "M&E", reviewedAt: today() });
       save(); rerender(); toast("Verified. The figures now include this submission");
     }
@@ -1052,10 +1242,11 @@
       const s = state.submissions.find(x => x.id === a.dataset.id);
       dialog("Return with a note", `<label>What needs fixing<textarea name="note" rows="4" required placeholder="For example: re-check the attendance register for Site M"></textarea></label>`, "Return submission", fd => {
         const note = String(fd.get("note") || "").trim(); if (!note) return false;
+        logEvent(s, "Returned with a note", "M&E");
         Object.assign(s, { status: "returned", note, reviewedBy: "M&E", reviewedAt: today() }); save(); rerender(); toast("Returned to the submitter");
       });
     }
-    else if (act === "resubmit") { const s = state.submissions.find(x => x.id === a.dataset.id); Object.assign(s, { status: "submitted", submittedAt: today() }); save(); rerender(); toast("Resubmitted for review"); }
+    else if (act === "resubmit") { const s = state.submissions.find(x => x.id === a.dataset.id); logEvent(s, "Resubmitted"); Object.assign(s, { status: "submitted", submittedAt: today() }); save(); rerender(); toast("Resubmitted for review"); }
     else if (act === "record") {
       const p = prompts().list.find(x => x.id === a.dataset.id);
       const owners = ["Programs Manager", "Director of Programs", "Lead Coach", "Associate", "M&E", "Codifier"];
@@ -1065,7 +1256,7 @@
         <div class="form-grid"><label>Owner<select name="owner">${owners.map(o => `<option>${o}</option>`).join("")}</select></label><label>Look again on<input type="date" name="review" value="${inTwo}" required></label></div>`, "Save decision", fd => {
         const title = String(fd.get("title") || "").trim(), decision = String(fd.get("decision") || "").trim();
         if (!title || !decision) return false;
-        state.decisions.unshift({ id: uid("d"), date: today(), title, decision, owner: fd.get("owner"), review: fd.get("review") }); save(); rerender(); toast("Decision saved to the log");
+        state.decisions.unshift({ id: uid("d"), date: today(), title, decision, owner: fd.get("owner"), review: fd.get("review"), promptId: p ? p.id : null }); save(); rerender(); toast("Decision saved to the log");
       });
     }
     else if (act === "print") window.print();
@@ -1074,6 +1265,17 @@
     else if (act === "import") $("#import-input").click();
     else if (act === "reset") dialog("Reset to sample data", "<p>This replaces everything saved in this browser with the original sample data. Export first if you want to keep your changes.</p>", "Reset data", () => { state = fresh(); save(); add.ds = null; rerender(); toast("Sample data restored"); });
     else if (act === "menu") document.body.classList.toggle("nav-open");
+    else if (act === "privacy") dialog("How data is handled", PRIVACY_HTML, "Close", () => true);
+    else if (act === "csv-figures") { downloadText("metis-verified-figures.csv", verifiedFigures().map(r => r.map(csvCell).join(",")).join("\n") + "\n", "text/csv"); toast("Verified figures downloaded"); }
+    else if (act === "mark-reviewed") { const d = state.decisions.find(x => x.id === a.dataset.id); if (d) { d.reviewedOn = today(); save(); rerender(); toast("Marked as reviewed"); } }
+    else if (act === "lang") { lang = a.dataset.v === "sw" ? "sw" : "en"; rerender(); }
+    else if (act === "checkin-again") { lastCheckin = null; rerender(); }
+    else if (act === "county") {
+      const card = a.closest(".dcard") || document, box = card.querySelector(".county-detail");
+      card.querySelectorAll(".cty-shape.sel").forEach(x => x.classList.remove("sel"));
+      a.classList.add("sel");
+      if (box) box.innerHTML = countyDetail(a.dataset.county);
+    }
   });
 
   document.addEventListener("submit", e => {
@@ -1083,14 +1285,40 @@
       d.fields.forEach(f => { let v = String(fd.get(f.key) == null ? "" : fd.get(f.key)).trim(); if (["int", "num", "pct"].includes(f.type) && v !== "") v = Number(v); r[f.key] = v; });
       add.rows.push(r); add.blocked = ""; rerender(); toast("Row added and checked");
     }
+    if (e.target.id === "checkin-form") {
+      e.preventDefault();
+      const fd = new FormData(e.target), msg = $("#ci-msg"), num = k => { const v = String(fd.get(k) || "").trim(); return v === "" ? "" : Number(v); };
+      const row = {
+        school: String(fd.get("school") || "").trim().toUpperCase(), county: fd.get("county"), grade_band: fd.get("grade_band"), class_size: num("class_size"),
+        girls: num("girls"), boys: num("boys"), with_disability: num("with_disability"), last_used: fd.get("last_used") || "",
+        used_for: fd.getAll("used_for").join("; "), minutes_saved: num("minutes_saved"), outcomes_seen: fd.getAll("outcomes_seen").join("; "),
+        what_worked: String(fd.get("what_worked") || "").trim(), support: fd.get("support") || ""
+      };
+      if (!row.school || row.class_size === "" || !row.last_used || !row.support) { msg.textContent = tx("missing"); return; }
+      if (PII_VALUE.test(row.what_worked) || NAME_PHRASE.test(row.what_worked)) { msg.textContent = tx("names"); return; }
+      const res = checkRows("teacher_checkin", [row])[0];
+      if (res.exclRow) { msg.textContent = res.issues.find(i => i.excl === "row").msg; return; }
+      let sub = state.submissions.find(x => x.dataset === "teacher_checkin" && x.status === "submitted" && x.term === CURRENT_TERM);
+      if (!sub) {
+        sub = { id: uid("sub"), dataset: "teacher_checkin", term: CURRENT_TERM, title: `Teacher check-ins, ${termLabel(CURRENT_TERM)}, new`, submittedBy: "Teachers (check-in)", submittedAt: today(), status: "submitted", note: "", rows: [], history: [] };
+        state.submissions.push(sub);
+      }
+      sub.rows.push(row);
+      logEvent(sub, "Check-in added", roleOf().label);
+      lastCheckin = `${row.school} · ${opt(row.grade_band)} · ${opt(row.last_used)}${res.issues.length ? ` · ${res.issues.map(i => i.msg).join(". ")}` : ""}`;
+      save(); rerender(); toast(lang === "sw" ? "Ripoti imetumwa" : "Check-in sent");
+    }
     if (e.target.id === "voice-form") {
       e.preventDefault();
       const fd = new FormData(e.target), msg = $("#voice-msg");
       const text = String(fd.get("text") || "").trim();
       if (!text) { msg.textContent = "Add the quote first."; return; }
       if (PII_VALUE.test(text)) { msg.textContent = "Remove the phone number or email address, then save."; return; }
-      if (!fd.get("consent")) { msg.textContent = "Record consent before saving this quote."; return; }
-      state.voices.unshift({ id: uid("v"), role: fd.get("role"), county: fd.get("county"), text, tags: fd.getAll("tags"), consent: true, added: today() });
+      if (NAME_PHRASE.test(text)) { msg.textContent = "The quote looks like it names someone. Remove the name, then save."; return; }
+      const learner = String(fd.get("role") || "").startsWith("Learner");
+      if (!fd.get("consent")) { msg.textContent = learner ? "Record the parent or caregiver's consent before saving this quote." : "Record consent before saving this quote."; return; }
+      if (learner && !fd.get("assent")) { msg.textContent = "A learner's quote also needs the learner's own agreement."; return; }
+      state.voices.unshift({ id: uid("v"), role: fd.get("role"), county: fd.get("county"), text, tags: fd.getAll("tags"), consent: true, consentType: learner ? "caregiver consent and learner assent" : "consent", added: today() });
       save(); voiceFilter = "all"; rerender(); toast("Voice saved");
     }
   });
@@ -1111,7 +1339,13 @@
       r.readAsText(e.target.files[0]);
     }
   });
-  document.addEventListener("keydown", e => { if (e.key === "Escape") document.body.classList.remove("nav-open"); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") document.body.classList.remove("nav-open");
+    const t = e.target;
+    if ((e.key === "Enter" || e.key === " ") && t && t.getAttribute && t.getAttribute("data-action") && !["BUTTON", "A", "INPUT", "SELECT", "TEXTAREA"].includes(t.tagName)) {
+      e.preventDefault(); t.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }
+  });
 
   window.addEventListener("hashchange", route);
   $("#role").innerHTML = C.ROLES.map(r => `<option value="${r.id}">${esc(r.label)}</option>`).join("");

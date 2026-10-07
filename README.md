@@ -14,10 +14,11 @@ A concept prototype of an impact portal built around how Metis already works: th
 | m | Design map | The design thinking map: challenge, needs, objectives, outcome chain, impact and the expert council's requirements |
 | e | Voices | Anonymous, consented quotes from learners, teachers, caregivers and Fellows, tagged by North Star outcome |
 | t | Programmes | Fellowship, InnovatED, Whole Child Schools, Kenya EdTech Testbed, Knowledge Sharing Events |
-| i | Add data | Forms and CSV uploads for six datasets, checked as rows are added |
-| i | Review and trust | M&E verifies submissions or returns them with a note. Only verified data counts |
-| i | Pause and adapt | Decision prompts from rules agreed in advance, plus a decision log |
-| s | Donor report | Verified-only report with ready-to-use sentences, sources and sample sizes; prints to PDF |
+| i | Teacher check-in | A two-minute, phone-friendly check-in for teachers, in English or Kiswahili: tool use, time saved, class make-up, North Star outcomes seen, support needed |
+| i | Add data | Forms and CSV uploads for seven datasets, checked as rows are added |
+| i | Review and trust | M&E verifies submissions or returns them with a note, and every submission keeps a dated history. Only verified data counts |
+| i | Pause and adapt | Decision prompts from rules agreed in advance, plus a decision log that links decisions to prompts and flags overdue reviews |
+| s | Donor report | Verified-only report with ready-to-use sentences, what we're learning, sources and sample sizes; prints to PDF and downloads verified figures as CSV |
 
 ## Roles
 
@@ -25,7 +26,8 @@ Switch role from the top bar.
 
 - **Program staff** (Lead Coaches, Codifier, Associates, partners): add data, see everything internal.
 - **M&E:** verify or return submissions.
-- **Decision maker** (Programs Manager, Director): record decisions against prompts.
+- **Decision maker** (Programs Manager, Director): record decisions against prompts and mark reviews done.
+- **Teacher:** send check-ins; sees the dashboard and programmes, not the internal review tools.
 - **Donor:** verified data only; data entry, review and decisions are hidden.
 
 ## Data checks
@@ -39,6 +41,7 @@ Every row is checked when it's added and again whenever figures are calculated.
 | Required values | Use not recorded | Row left out of use figures |
 | Small groups | 3 teachers in a session | Flagged; counted but never used alone |
 | Cost outliers | More than twice the median | Flagged for a finance check |
+| Name phrases | "my name is", "naitwa", "jina langu ni" in notes or quotes | Blocked until removed |
 | Personal data guard | Columns like `name`, `phone`, `upi`, `nemis`, `admission`; values that look like phone numbers or emails | Upload blocked |
 
 Key measure: **cost per teacher using the tool** (cost per completer divided by the share using the tool at eight weeks), which counts drop-out and non-use that cost per completer hides.
