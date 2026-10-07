@@ -410,6 +410,7 @@
     <ul class="ticks">
       <li><strong>What it holds:</strong> aggregate figures for sites, schools, events and pilots; coded Fellow records; teacher check-ins without names; anonymous quotes with recorded consent.</li>
       <li><strong>What it never holds:</strong> learners' names, phone numbers, email addresses, UPI, NEMIS or admission numbers, or photos of children. Uploads and notes that contain them are blocked.</li>
+      <li><strong>Photos:</strong> the five photos are Metis's own, from metiscollective.org, and show adults only. The portal never stores photos of learners.</li>
       <li><strong>Children's data:</strong> Kenya's Data Protection Act (2019) requires a parent or guardian's consent to process a child's data. Learner quotes therefore need caregiver consent and the learner's own agreement.</li>
       <li><strong>Keeping and deleting:</strong> Export saves a copy and Reset sample data clears this browser. A production version would set retention periods in Metis's data protection policy.</li>
     </ul>`;
@@ -739,7 +740,7 @@
       ${o.cap ? capLine(o.cap) : ""}
     </section>`;
   const capLine = text => `<p class="dcap">${MARK}<span>${esc(text)}</span></p>`;
-  const numOut = (v, f) => (f === "pct" ? Math.round(v) + "%" : f === "kes" ? kes(v) : f === "dec" ? String(Math.round(v * 10) / 10) : fmt(v));
+  const numOut = (v, f) => (f === "pct" ? Math.round(v) + "%" : f === "kes" ? kes(v) : f === "dec" ? String(Math.round(v * 10) / 10) : f === "m" ? Math.round(v / 1e5) / 10 + "M" : fmt(v));
   const num = (v, f) => (isFinite(v) ? `<span data-count="${v}" data-fmt="${f || "int"}">${numOut(v, f)}</span>` : "n/a");
   const tile = o => `<div class="stat${o.side ? " stat-row" : ""}" data-card="tile-${o.id}" data-sig="${esc(String(o.sig == null ? o.value : o.sig))}"${o.tip ? ` data-tip="${esc(o.tip)}" tabindex="0"` : ""}>
       ${o.side ? "<div>" : ""}<div class="stat-label">${esc(o.label)}</div><div class="stat-value">${num(o.value, o.fmt)}${o.of != null ? `<small>/${fmt(o.of)}</small>` : ""}</div>${o.side ? "" : o.mini || ""}<div class="stat-sub">${o.sub || ""}</div>${o.side ? `</div>${o.side}` : ""}
@@ -897,10 +898,57 @@
       cards: D => [DC.north(D, 7), DC.progress(D, 5), DC.map(D, 6), stack(6, DC.teacherKids(D, 12), DC.voice(D, 12)), DC.events(D, 6), DC.ladder(D, 6), DC.report(D, 12)] }
   };
 
+  /* One Metis photo and a short intro per role: who the page is for and what they'll find. Photos: metiscollective.org. */
+  const ROLE_INTRO = {
+    lead: { alt: "Educators with their arms raised at Metis's Reimagined 2023 education summit",
+      intro: "For the Programs Manager and Director. Everything Metis runs, from the Fellowship to InnovatED, comes back to one question: are the children we reach thriving? Start with the children, see what needs a decision, then open any programme.",
+      points: ["The children first, as five North Star outcomes", "Cost, reach and quality side by side", "Decisions due under rules we agreed"] },
+    staff: { alt: "Coaches and Fellows in Further Together shirts talking outdoors at a Metis Fellowship session",
+      intro: "For Lead Coaches, the Codifier and Associates. Your list for the week comes first: what to fix, what to add and who needs support. Below it sit the Fellowship, teacher check-ins and events as they stand today.",
+      points: ["Your to-do list for the week", "Fellows and teachers who need support", "Events and pilots as they stand"] },
+    me: { alt: "Two educators checking information on their phones during a Metis session",
+      intro: "For the M&E team. Nothing reaches a dashboard or a partner until you've checked it. Here's what's waiting, what the automatic checks caught, and which datasets are getting stale.",
+      points: ["Submissions waiting for review", "What the checks caught", "Datasets going stale"] },
+    teacher: { alt: "Teachers working on laptops during InnovatED training at Amal Labs",
+      intro: "For teachers using InnovatED tools. Two minutes every fortnight tells us how the tools work in your class. In return, you see what teachers across Kenya are noticing, and ideas you can borrow on Monday morning.",
+      points: ["A two-minute check-in, in English or Kiswahili", "What other teachers are seeing", "Ideas to borrow on Monday"] },
+    partner: { alt: "Educators at a Metis event holding signs that read I am inspired, I am motivated and I am loved",
+      intro: "For funders and partners. Every number here has been checked by our M&E team and carries its source. The children come first, then the teachers and leaders making the change, then the stories behind the numbers.",
+      points: ["Checked results, each with its source", "The people behind the numbers", "A report to print or download"] }
+  };
+  const ABOUT_KEY = "metis-wcl-about-hidden";
+  const aboutHidden = () => { try { return localStorage.getItem(ABOUT_KEY) === "1"; } catch (e) { return false; } };
+  const WHY = [
+    ["letter", "m", "Built the METIS Way", "The menu follows our own design process: make meaning, empathize, tackle, iterate, share."],
+    ["kid", "agency", "The whole child, not a test score", "Agency, belonging, creativity, delight and expertise: the North Star we hold ourselves to."],
+    ["kid", "belonging", "Proximate leaders, proximate data", "Fellows, coaches and teachers report from the field, on a phone, in English or Kiswahili."],
+    ["kid", "expertise", "Honest by design", "Nothing counts until M&E has checked it, and partners only ever see verified results."]
+  ];
+  function aboutBand() {
+    if (aboutHidden()) return "";
+    return `<section class="about-band" aria-labelledby="about-h">
+      <button class="ab-hide" data-action="about-toggle" aria-label="Hide the introduction to this portal">Hide</button>
+      <div class="ab-hook"><div class="eyebrow">About this portal</div>
+        <h2 id="about-h">Four million learners. One question: are they thriving?</h2>
+        <p>This is where Metis's work comes together: the leaders we equip, the teachers they train and the children in their classrooms, in one live picture measured against the outcomes we care about most.</p></div>
+      <ul class="ab-why">${WHY.map(([t, k, h, s]) => `<li><span class="ab-icon${t === "letter" ? " letter" : ""}"${t === "kid" ? ` style="--c:${NS_COLOR[k]}"` : ""}>${t === "letter" ? k : kid(k, true)}</span><div><strong>${esc(h)}</strong><span>${esc(s)}</span></div></li>`).join("")}</ul>
+      <div class="ab-stats">${[[4e6, "m", "learners impacted"], [160, "int", "Fellows equipped"], [47, "int", "counties reached"], [1500, "int", "stakeholders convened"]].map(([v, f, l]) => `<div class="ab-stat"><b>${num(v, f)}</b><span>${l}</span></div>`).join("")}
+        <p class="ab-src">Metis to date, from metiscollective.org. The dashboard below uses fictional sample data.</p></div>
+    </section>`;
+  }
+
   function viewOverview() {
-    const D = dashData(), R = ROLE_DASH[state.role] || ROLE_DASH.lead;
-    return `<header class="page-head dash-head"><div><div class="eyebrow">${R.eyebrow}</div><h1>${esc(R.title)}</h1></div>
-        ${D.t.pending && can.review() ? `<p class="note">${chip("wait", "Awaiting review")} ${D.t.pending} submission${D.t.pending > 1 ? "s" : ""} not counted yet · <a href="#/review">Review</a></p>` : ""}</header>
+    const D = dashData(), R = ROLE_DASH[state.role] || ROLE_DASH.lead, I = ROLE_INTRO[state.role] || ROLE_INTRO.lead;
+    const pendingNote = D.t.pending && can.review() ? `<p class="note">${chip("wait", "Awaiting review")} ${D.t.pending} submission${D.t.pending > 1 ? "s" : ""} not counted yet · <a href="#/review">Review</a></p>` : "";
+    return `<header class="role-hero">
+        <img class="rh-bg" src="assets/img/photos/${state.role}.webp" alt="${esc(I.alt)}">
+        <span class="rh-credit">Photo: Metis</span>
+        <div class="rh-text"><div class="eyebrow">${R.eyebrow}</div><h1>${esc(R.title)}</h1>
+          <p class="rh-intro">${esc(I.intro)}</p>
+          <ul class="rh-points">${I.points.map((p, i) => `<li style="--c:${NS_COLOR[C.NORTH_STAR[i % 5].key]}">${kid(C.NORTH_STAR[i % 5].key, true)}${esc(p)}</li>`).join("")}</ul>
+          <div class="rh-foot">${pendingNote}${aboutHidden() ? `<button class="pill" data-action="about-toggle">About this portal</button>` : ""}</div></div>
+      </header>
+      ${aboutBand()}
       <div class="dash-kpis">${R.tiles(D).map(tile).join("")}</div>
       <div class="dash">${R.cards(D).join("")}</div>`;
   }
@@ -1435,6 +1483,7 @@
     else if (act === "lang") { lang = a.dataset.v === "sw" ? "sw" : "en"; rerender(); }
     else if (act === "checkin-again") { lastCheckin = null; rerender(); }
     else if (act === "go") location.hash = a.dataset.to;
+    else if (act === "about-toggle") { try { localStorage.setItem(ABOUT_KEY, aboutHidden() ? "0" : "1"); } catch (err) { /* storage unavailable */ } rerender(); }
     else if (act === "open-review") { openSubs.add(a.dataset.id); reviewFilter = "submitted"; location.hash = "#/review"; }
     else if (act === "county") {
       const card = a.closest(".dcard") || document, box = card.querySelector(".county-detail");

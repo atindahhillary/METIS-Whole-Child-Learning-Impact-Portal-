@@ -4,7 +4,9 @@
 
 A concept prototype of an impact portal built around how Metis already works: the **METIS Way** (Make meaning, Empathize, Tackle, Iterate, Share) organises the navigation, and Metis's **North Star** learner outcomes (Agency, Belonging, Creativity, Delight, Expertise) sit at the centre of every dashboard, drawn as children rather than letters.
 
-> Concept prototype by Hillary Atindah. Not an official Metis platform. All figures are fictional sample data. Anything you add is saved in your own browser only.
+> Concept prototype by Hillary Atindah. Not an official Metis platform. Dashboard figures are fictional sample data. Anything you add is saved in your own browser only. Photos and the "Metis to date" figures come from [metiscollective.org](https://www.metiscollective.org/).
+
+**Four million learners. One question: are they thriving?** The portal brings Metis's work together, from the leaders we equip to the teachers they train and the children in their classrooms, in one live picture measured against the outcomes Metis cares about most. What makes it Metis's own: the menu follows the METIS Way, the North Star (agency, belonging, creativity, delight, expertise) sits at the centre instead of a test score, Fellows, coaches and teachers report from the field in English or Kiswahili, and nothing counts until M&E has checked it.
 
 ## What it does
 
@@ -22,7 +24,7 @@ A concept prototype of an impact portal built around how Metis already works: th
 
 ## Roles
 
-Switch role from the top bar. Each role gets its own dashboard and only the menu items it needs.
+Switch role from the top bar. Each role gets its own dashboard and only the menu items it needs. Every dashboard opens with a Metis photo as the background, a short intro saying who the page is for and what they'll find, and an "About this portal" band that anyone can hide.
 
 | Role | Dashboard | What it shows |
 |---|---|---|
@@ -83,6 +85,7 @@ assets/js/app.js            Checks, metrics, decision prompts, views
 assets/js/kenya-map.js      Kenya's 47 county outlines and national border as SVG paths (generated)
 tools/build_kenya_map.py    Rebuilds kenya-map.js from geoBoundaries data
 assets/img/                 Logo and icon
+assets/img/photos/          One photo per role, from metiscollective.org (adults only)
 templates/                  CSV templates for each dataset
 docs/DESIGN-THINKING-MAP.md The design thinking map
 ```
